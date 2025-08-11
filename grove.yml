@@ -1,0 +1,5 @@
+name: grove-claude-logs
+description: Claude transcript log parsing and monitoring
+binary:
+  name: clogs
+  path: ./bin/clogs
