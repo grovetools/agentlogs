@@ -3,8 +3,8 @@ module github.com/mattsolo1/grove-claude-logs
 go 1.24.4
 
 require (
-	github.com/mattsolo1/grove-core v0.2.9
-	github.com/mattsolo1/grove-tend v0.2.5
+	github.com/mattsolo1/grove-core v0.2.10
+	github.com/mattsolo1/grove-tend v0.2.6
 	github.com/spf13/cobra v1.9.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -49,4 +49,3 @@ require (
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 )
-
