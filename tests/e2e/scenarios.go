@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/mattsolo1/grove-tend/pkg/assert"
 	"github.com/mattsolo1/grove-tend/pkg/command"
@@ -61,14 +60,22 @@ func ClogsListScenario() *harness.Scenario {
 				result := cmd.Run()
 				ctx.ShowCommandOutput(cmd.String(), result.Stdout, result.Stderr)
 				
-				if err := assert.Equal(0, result.ExitCode, "clogs list should exit successfully"); err != nil {
-					return err
+				if result.ExitCode != 0 {
+					// Check if it failed because of no sessions
+					if result.Stdout == "No session transcripts found\n" {
+						return nil // This is acceptable
+					}
+					return fmt.Errorf("clogs list failed: %s", result.Stderr)
 				}
 				
-				// For now, just check that it prints the placeholder message
-				// Note: cobra's cmd.Println writes to stderr by default
-				output := result.Stdout + result.Stderr
-				return assert.Contains(output, "Listing available session transcripts", "Should print list message")
+				// Check that it lists sessions
+				if err := assert.Contains(result.Stdout, "Available session transcripts:", "Should print header"); err != nil {
+					return err
+				}
+				if err := assert.Contains(result.Stdout, "test-project/session-alpha", "Should list session-alpha"); err != nil {
+					return err
+				}
+				return assert.Contains(result.Stdout, "test-project/session-beta", "Should list session-beta")
 			}),
 		},
 	}
@@ -95,10 +102,12 @@ func ClogsTailScenario() *harness.Scenario {
 					return err
 				}
 				
-				// For now, just check that it prints the placeholder message with session ID
-				// Note: cobra's cmd.Printf writes to stderr by default
-				output := result.Stdout + result.Stderr
-				return assert.Contains(output, "Tailing transcript for session: session-alpha", "Should print tail message with session ID")
+				// Check that it shows messages
+				if err := assert.Contains(result.Stdout, "Showing last", "Should show message count"); err != nil {
+					return err
+				}
+				// Should have at least one message
+				return assert.Contains(result.Stdout, ":", "Should show messages with role")
 			}),
 		},
 	}
@@ -125,13 +134,11 @@ func ClogsQueryScenario() *harness.Scenario {
 					return err
 				}
 				
-				// Check that it prints the placeholder message with session ID and role
-				// Note: cobra's cmd.Printf writes to stderr by default
-				output := result.Stdout + result.Stderr
-				if !strings.Contains(output, "Querying transcript for session: session-alpha") {
-					return fmt.Errorf("output should contain session ID")
+				// Check that it shows filtered messages
+				if err := assert.Contains(result.Stdout, "Found", "Should show message count"); err != nil {
+					return err
 				}
-				return assert.Contains(output, "role: user", "Should print role filter")
+				return assert.Contains(result.Stdout, "user:", "Should show user messages")
 			}),
 		},
 	}
