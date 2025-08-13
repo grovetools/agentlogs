@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/mattsolo1/grove-tend/pkg/assert"
@@ -50,9 +49,9 @@ func ClogsListScenario() *harness.Scenario {
 		Steps: []harness.Step{
 			harness.NewStep("Setup mock Claude directory", setupMockClaudeDir),
 			harness.NewStep("Run 'clogs list'", func(ctx *harness.Context) error {
-				clogsBinary := os.Getenv("CLOGS_BINARY")
-				if clogsBinary == "" {
-					return fmt.Errorf("CLOGS_BINARY environment variable not set")
+				clogsBinary, err := FindProjectBinary()
+				if err != nil {
+					return err
 				}
 				
 				homeDir := ctx.GetString("mock_home")
@@ -88,9 +87,9 @@ func ClogsTailScenario() *harness.Scenario {
 		Steps: []harness.Step{
 			harness.NewStep("Setup mock Claude directory", setupMockClaudeDir),
 			harness.NewStep("Run 'clogs tail' with session ID", func(ctx *harness.Context) error {
-				clogsBinary := os.Getenv("CLOGS_BINARY")
-				if clogsBinary == "" {
-					return fmt.Errorf("CLOGS_BINARY environment variable not set")
+				clogsBinary, err := FindProjectBinary()
+				if err != nil {
+					return err
 				}
 				
 				homeDir := ctx.GetString("mock_home")
@@ -120,9 +119,9 @@ func ClogsQueryScenario() *harness.Scenario {
 		Steps: []harness.Step{
 			harness.NewStep("Setup mock Claude directory", setupMockClaudeDir),
 			harness.NewStep("Run 'clogs query' with role filter", func(ctx *harness.Context) error {
-				clogsBinary := os.Getenv("CLOGS_BINARY")
-				if clogsBinary == "" {
-					return fmt.Errorf("CLOGS_BINARY environment variable not set")
+				clogsBinary, err := FindProjectBinary()
+				if err != nil {
+					return err
 				}
 				
 				homeDir := ctx.GetString("mock_home")
