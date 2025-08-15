@@ -1,3 +1,20 @@
+## v0.0.3 (2025-08-15)
+
+### Code Refactoring
+
+* standardize E2E binary naming and use grove.yml for binary discovery
+
+### Continuous Integration
+
+* switch to Linux runners to reduce costs
+* consolidate to single test job on macOS
+* reduce test matrix to macOS with Go 1.24.4 only
+
+### Chores
+
+* **deps:** bump dependencies
+* bump deps
+
 ## v0.0.2 (2025-08-12)
 
 ### Bug Fixes
