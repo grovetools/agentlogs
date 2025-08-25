@@ -1,3 +1,17 @@
+## v0.0.4 (2025-08-25)
+
+### Continuous Integration
+
+* add Git LFS disable to release workflow
+
+### Features
+
+* enhance clogs with improved list, filtering, and read commands
+
+### Chores
+
+* bump dependencies
+
 ## v0.0.3 (2025-08-15)
 
 ### Code Refactoring
