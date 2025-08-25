@@ -3,7 +3,7 @@ module github.com/mattsolo1/grove-claude-logs
 go 1.24.4
 
 require (
-	github.com/mattsolo1/grove-core v0.2.11
+	github.com/mattsolo1/grove-core v0.2.12
 	github.com/mattsolo1/grove-tend v0.2.8
 	github.com/spf13/cobra v1.9.1
 	gopkg.in/yaml.v3 v3.0.1
