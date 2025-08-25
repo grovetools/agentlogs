@@ -43,3 +43,6 @@ Thumbs.db
 # Local configuration
 config.local.yaml
 .env
+
+.grove
+.grove-worktrees

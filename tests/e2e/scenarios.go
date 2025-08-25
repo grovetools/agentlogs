@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 
@@ -22,17 +23,17 @@ func setupMockClaudeDir(ctx *harness.Context) error {
 	}
 
 	// Create a mock transcript file
-	transcriptContent := `{"uuid":"1","parentUuid":null,"type":"user","message":{"role":"user","content":"Hello"},"timestamp":"2025-01-01T12:00:00Z"}
+	transcriptContent := `{"cwd":"/tmp/project-alpha","sessionId":"session-alpha","uuid":"1","parentUuid":null,"type":"user","message":{"role":"user","content":"Hello"},"timestamp":"2025-01-01T12:00:00Z"}
 {"uuid":"2","parentUuid":"1","type":"assistant","message":{"role":"assistant","content":"Hi there!"},"timestamp":"2025-01-01T12:00:01Z"}
 {"uuid":"3","parentUuid":"2","type":"user","message":{"role":"user","content":"How are you?"},"timestamp":"2025-01-01T12:00:02Z"}
 {"uuid":"4","parentUuid":"3","type":"assistant","message":{"role":"assistant","content":"I'm doing well, thank you!"},"timestamp":"2025-01-01T12:00:03Z"}`
 	
 	if err := fs.WriteString(filepath.Join(projectsDir, "session-alpha.jsonl"), transcriptContent); err != nil {
-		return err
+		return fmt.Errorf("failed to write session-alpha.jsonl: %w", err)
 	}
 
 	// Create another session
-	transcriptContent2 := `{"uuid":"1","parentUuid":null,"type":"user","message":{"role":"user","content":"Test message"},"timestamp":"2025-01-02T10:00:00Z"}`
+	transcriptContent2 := `{"cwd":"/tmp/project-beta","sessionId":"session-beta","uuid":"1","parentUuid":null,"type":"user","message":{"role":"user","content":"Test message"},"timestamp":"2025-01-02T10:00:00Z"}`
 	if err := fs.WriteString(filepath.Join(projectsDir, "session-beta.jsonl"), transcriptContent2); err != nil {
 		return err
 	}
@@ -68,13 +69,81 @@ func ClogsListScenario() *harness.Scenario {
 				}
 				
 				// Check that it lists sessions
-				if err := assert.Contains(result.Stdout, "Available session transcripts:", "Should print header"); err != nil {
+				if err := assert.Contains(result.Stdout, "SESSION ID", "Should print table header"); err != nil {
 					return err
 				}
-				if err := assert.Contains(result.Stdout, "test-project/session-alpha", "Should list session-alpha"); err != nil {
+				if err := assert.Contains(result.Stdout, "WORKTREE", "Should print worktree column"); err != nil {
 					return err
 				}
-				return assert.Contains(result.Stdout, "test-project/session-beta", "Should list session-beta")
+				if err := assert.Contains(result.Stdout, "session-alpha", "Should list session-alpha"); err != nil {
+					return err
+				}
+				return assert.Contains(result.Stdout, "project-beta", "Should list project-beta")
+			}),
+			harness.NewStep("Run 'clogs list --json'", func(ctx *harness.Context) error {
+				clogsBinary, err := FindProjectBinary()
+				if err != nil {
+					return err
+				}
+				
+				homeDir := ctx.GetString("mock_home")
+				cmd := command.New(clogsBinary, "list", "--json").Env("HOME=" + homeDir)
+				result := cmd.Run()
+				ctx.ShowCommandOutput(cmd.String(), result.Stdout, result.Stderr)
+				
+				if result.ExitCode != 0 {
+					return fmt.Errorf("clogs list --json failed: %s", result.Stderr)
+				}
+				
+				// Check that it outputs valid JSON
+				var sessions []map[string]interface{}
+				if err := json.Unmarshal([]byte(result.Stdout), &sessions); err != nil {
+					return fmt.Errorf("failed to parse JSON output: %w", err)
+				}
+				
+				// Check that sessions have expected fields
+				if len(sessions) == 0 {
+					return fmt.Errorf("expected at least one session in JSON output")
+				}
+				
+				for _, session := range sessions {
+					if _, ok := session["sessionId"]; !ok {
+						return fmt.Errorf("missing sessionId field in JSON output")
+					}
+					if _, ok := session["projectName"]; !ok {
+						return fmt.Errorf("missing projectName field in JSON output")
+					}
+					if _, ok := session["startedAt"]; !ok {
+						return fmt.Errorf("missing startedAt field in JSON output")
+					}
+				}
+				
+				return nil
+			}),
+			harness.NewStep("Run 'clogs list --project alpha'", func(ctx *harness.Context) error {
+				clogsBinary, err := FindProjectBinary()
+				if err != nil {
+					return err
+				}
+				
+				homeDir := ctx.GetString("mock_home")
+				cmd := command.New(clogsBinary, "list", "--project", "alpha").Env("HOME=" + homeDir)
+				result := cmd.Run()
+				ctx.ShowCommandOutput(cmd.String(), result.Stdout, result.Stderr)
+				
+				if result.ExitCode != 0 {
+					return fmt.Errorf("clogs list --project alpha failed: %s", result.Stderr)
+				}
+				
+				// Check that it only shows project-alpha
+				if err := assert.Contains(result.Stdout, "session-alpha", "Should list session-alpha"); err != nil {
+					return err
+				}
+				// Check that it doesn't show project-beta
+				if err := assert.NotContains(result.Stdout, "project-beta", "Should not list project-beta"); err != nil {
+					return err
+				}
+				return assert.Contains(result.Stdout, "project-alpha", "Should show project-alpha")
 			}),
 		},
 	}
