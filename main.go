@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 	"time"
 	
+	"github.com/mattsolo1/grove-claude-logs/cmd"
 	"github.com/mattsolo1/grove-claude-logs/internal/transcript"
 	"github.com/mattsolo1/grove-core/cli"
 	"github.com/spf13/cobra"
@@ -98,6 +99,7 @@ func main() {
 	rootCmd.AddCommand(newTailCmd())
 	rootCmd.AddCommand(newQueryCmd())
 	rootCmd.AddCommand(newReadCmd())
+	rootCmd.AddCommand(cmd.NewVersionCmd())
 	
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
