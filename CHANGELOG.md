@@ -1,3 +1,9 @@
+## v0.0.5 (2025-08-27)
+
+### Bug Fixes
+
+* add version command
+
 ## v0.0.4 (2025-08-25)
 
 ### Continuous Integration
