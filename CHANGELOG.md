@@ -1,3 +1,13 @@
+## v0.0.6 (2025-09-04)
+
+### Chores
+
+* **deps:** sync Grove dependencies to latest versions
+
+### Bug Fixes
+
+* prevent truncation in clogs read command
+
 ## v0.0.5 (2025-08-27)
 
 ### Bug Fixes
