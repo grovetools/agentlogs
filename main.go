@@ -152,6 +152,10 @@ func newListCmd() *cobra.Command {
 				// Re-open file to scan all messages
 				file.Seek(0, 0)
 				scanner := bufio.NewScanner(file)
+				// Increase buffer size for large JSON lines
+				const maxScanTokenSize = 1024 * 1024 // 1MB
+				buf := make([]byte, 0, 64*1024)
+				scanner.Buffer(buf, maxScanTokenSize)
 				lineIndex := 0
 				
 				for scanner.Scan() {
@@ -470,6 +474,10 @@ func newReadCmd() *cobra.Command {
 				hasSessionInfo := false
 				
 				scanner := bufio.NewScanner(file)
+				// Increase buffer size for large JSON lines
+				const maxScanTokenSize = 1024 * 1024 // 1MB
+				buf := make([]byte, 0, 64*1024)
+				scanner.Buffer(buf, maxScanTokenSize)
 				lineIndex := 0
 				
 				for scanner.Scan() {
@@ -567,6 +575,11 @@ func newReadCmd() *cobra.Command {
 			defer file.Close()
 			
 			scanner := bufio.NewScanner(file)
+			// Increase buffer size for large JSON lines (matching parser.go)
+			const maxScanTokenSize = 1024 * 1024 // 1MB
+			buf := make([]byte, 0, 64*1024)
+			scanner.Buffer(buf, maxScanTokenSize)
+			
 			lineIndex := 0
 			inRange := false
 			
