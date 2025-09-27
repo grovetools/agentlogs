@@ -1,40 +1,27 @@
 # Installation
 
-There are three primary methods to install the `clogs` binary, depending on your needs.
+The recommended way to install `grove-claude-logs` is by using the `grove` meta-CLI, which manages all tools within the Grove ecosystem.
 
-### Using Grove (Recommended)
+### Prerequisites
 
-For users who are part of the Grove developer tool ecosystem, the `grove` meta-tool is the recommended installation method. Grove automatically handles the discovery, installation, and management of binaries for all integrated tools, including `clogs`.
+You must have the `grove` meta-CLI installed. If you don't, please follow the **[Grove Ecosystem Installation Guide](https://github.com/mattsolo1/grove-meta/blob/main/docs/02-installation.md)** first. This guide also covers essential setup like configuring your `PATH`.
 
-If you are using Grove, `clogs` will be made available to you as part of the standard workflow without needing manual installation steps.
+### Install Command
 
-### Downloading from GitHub Releases
+Once the `grove` CLI is set up, you can install `grove-claude-logs` with a single command:
 
-Pre-compiled binaries are available for download from the project's [GitHub Releases page](https://github.com/mattsolo1/grove-claude-logs/releases). This is the simplest method if you do not want to build from source.
+```bash
+grove install clogs
+```
 
-The release workflow automatically builds binaries for the following platforms:
-*   macOS (amd64, arm64)
-*   Linux (amd64, arm64)
+### Verifying the Installation
 
-Download the appropriate archive for your operating system and architecture, extract it, and place the `clogs` binary in a directory within your system's `PATH`.
+To confirm that the tool was installed correctly, you can run its `version` command:
+
+```bash
+clogs version
+```
 
 ### Building from Source
 
-If you need to build from the latest source code or are developing `clogs`, you can compile it directly.
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/mattsolo1/grove-claude-logs.git
-    ```
-
-2.  **Navigate into the project directory:**
-    ```bash
-    cd grove-claude-logs
-    ```
-
-3.  **Build the binary using the Makefile:**
-    ```bash
-    make build
-    ```
-
-This command compiles the source code and places the final binary at `./bin/clogs`. The Grove ecosystem is designed to discover binaries in this location, so there is no need to move it into your global `PATH`.
+For contributors, the recommended way to work with the source code is to clone the entire Grove ecosystem monorepo. Please refer to the **[Building from Source](https://github.com/mattsolo1/grove-meta/blob/main/docs/02-installation.md#3-building-from-source-for-contributors)** section in the main installation guide for details.
