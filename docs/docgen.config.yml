@@ -6,37 +6,37 @@ enabled: true
 sections:
   - name: installation
     order: 1
-    output: installation.md
+    output: 01-installation.md
     prompt: prompts/installation.md
     title: Installation
   - name: getting-started
     order: 2
-    output: getting-started.md
+    output: 02-getting-started.md
     prompt: prompts/getting-started.md
     title: Getting Started with the CLI
   - name: cli-reference
     order: 3
-    output: cli-reference.md
+    output: 03-cli-reference.md
     prompt: prompts/cli-reference.md
     title: CLI Command Reference
   - name: core-concepts
     order: 4
-    output: core-concepts.md
+    output: 04-core-concepts.md
     prompt: prompts/core-concepts.md
     title: Core Concepts
   - name: go-library-usage
     order: 5
-    output: go-library-usage.md
+    output: 05-go-library-usage.md
     prompt: prompts/go-library-usage.md
     title: Using as a Go Library
   - name: configuration
     order: 6
-    output: configuration.md
+    output: 06-configuration.md
     prompt: prompts/configuration.md
     title: Configuration
   - name: architecture
     order: 7
-    output: architecture.md
+    output: 07-architecture.md
     prompt: prompts/architecture.md
     title: Architecture
 settings:
