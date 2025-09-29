@@ -1,48 +1,28 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/mattsolo1/grove-docgen/main/schema/docgen.config.schema.json
 category: "Developer Tools"
-title: "Grove Claude"
+title: "Grove Claude Logs"
 description: "A CLI tool and Go library for parsing, monitoring, and analyzing Claude AI session transcripts."
 enabled: true
 sections:
-  - name: installation
+  - name: overview
     order: 1
-    output: 01-installation.md
-    prompt: prompts/installation.md
-    title: Installation
-  - name: getting-started
+    output: 01-overview.md
+    prompt: prompts/01-overview.md
+    title: Overview
+  - name: examples
     order: 2
-    output: 02-getting-started.md
-    prompt: prompts/getting-started.md
-    title: Getting Started with the CLI
-  - name: cli-reference
+    output: 02-examples.md
+    prompt: prompts/02-examples.md
+    title: Examples
+  - name: command-reference
     order: 3
-    output: 03-cli-reference.md
-    prompt: prompts/cli-reference.md
-    title: CLI Command Reference
-  - name: core-concepts
-    order: 4
-    output: 04-core-concepts.md
-    prompt: prompts/core-concepts.md
-    title: Core Concepts
-  - name: go-library-usage
-    order: 5
-    output: 05-go-library-usage.md
-    prompt: prompts/go-library-usage.md
-    title: Using as a Go Library
-  - name: configuration
-    order: 6
-    output: 06-configuration.md
-    prompt: prompts/configuration.md
-    title: Configuration
-  - name: architecture
-    order: 7
-    output: 07-architecture.md
-    prompt: prompts/architecture.md
-    title: Architecture
+    output: 03-command-reference.md
+    prompt: prompts/03-command-reference.md
+    title: Command Reference
 settings:
   model: gemini-2.5-pro
   output_dir: docs
-  regeneration_mode: reference
+  regeneration_mode: scratch
   rules_file: docs.rules
   structured_output_file: pkg/docs/docs.json
   system_prompt: default
