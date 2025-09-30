@@ -1,59 +1,47 @@
-# Clogs: Claude Log Manager
+<!-- DOCGEN:OVERVIEW:START -->
 
-Clogs is both a CLI tool and a Go library for parsing, monitoring, and analyzing local Claude AI session transcripts. It's part of the "Grove" developer tool ecosystem, designed to help developers understand and work with their Claude conversation history.
+`grove-claude-logs` (`clogs`) is a command-line tool and Go library for parsing, monitoring, and analyzing local Claude AI session transcripts. As part of the Grove developer tool ecosystem, it provides a structured way for developers to inspect, query, and understand their interaction history with Claude, particularly within workflows orchestrated by `grove-flow`.
 
-## Key Features
+<!-- placeholder for animated gif -->
 
-### CLI Tool
-- **List sessions:** Browse all Claude session transcripts with filtering by project, worktree, plan, or job name
-- **Read specific executions:** View logs for specific plan/job executions with clear, formatted output
-- **Tail recent activity:** Display the last messages from any session
-- **Query and filter:** Search messages by role (user/assistant) with JSON output support
-- **Grove integration:** Seamlessly integrates with Grove Flow plans and job executions
+### Key Features
 
-### Go Library
-- **Real-time monitoring:** Monitor Claude transcript files for new messages as they arrive
-- **Robust parsing:** Parse JSONL transcript files with support for different message formats
-- **Database integration:** Store and manage extracted messages with SQLite support
-- **Automatic summarization:** Generate session summaries and milestone tracking
-- **Configurable extraction:** Customizable parsing and monitoring behavior
+*   **Session Listing and Filtering**: Browse all Claude session transcripts with metadata like project, worktree, and associated `grove-flow` jobs. Filter the list to quickly find relevant sessions.
+*   **Targeted Log Reading**: Read the specific conversation log for a single `grove-flow` job, isolating the interaction for a particular task.
+*   **Message Querying**: Search and filter messages within a session by role (`user` or `assistant`), with support for structured JSON output for scripting.
+*   **Real-Time Monitoring**: The underlying Go library can be used to monitor transcript files for new messages as they are written, enabling real-time applications.
+*   **Grove Integration**: Designed to work with the Grove ecosystem, `clogs` automatically discovers transcripts and extracts metadata related to Grove projects, worktrees, and plans.
 
-## Quick Start
+## Ecosystem Integration
 
-The most common CLI commands to get started:
+`clogs` is a key observability component within the Grove ecosystem, providing critical insights into the behavior of LLM agents.
 
-```bash
-# List all available session transcripts
-clogs list
+*   **`grove-flow`**: The primary use case for `clogs` is to review the execution of `grove-flow` plans. Since agents write their interactions to Claude transcripts, `clogs` allows you to debug a plan by reading the exact conversation that occurred for a specific job (e.g., `clogs read my-plan/01-setup.md`).
+*   **`grove-hooks`**: `clogs` acts as a data source for the wider ecosystem. Its ability to parse and monitor transcripts in real-time means it can produce structured events about LLM interactions. These events can be published via `grove-hooks` to be consumed by other tools, such as dashboards, alerting systems, or automated analysis agents.
 
-# Filter sessions by project name
-clogs list -p my-project
-
-# Read logs for a specific plan/job execution
-clogs read my-plan/01-setup.md
-
-# Follow the last messages from a session
-clogs tail <session-id>
-
-# Query messages with filtering
-clogs query <session-id> --role assistant --json
-```
+By providing a structured interface to raw transcript data, `clogs` makes LLM interactions a first-class, observable part of the development workflow.
 
 ## Installation
 
-Installation is typically handled via the grove meta-tool, which manages binaries across the entire Grove ecosystem. You can also download binaries directly from the [GitHub Releases](https://github.com/mattsolo1/grove-claude-logs/releases) page.
-
-To build from source:
+Install via the Grove meta-CLI:
 ```bash
-make build
+grove install claude-logs
 ```
 
-This creates the binary in `./bin/clogs`. The Grove ecosystem handles binary discovery automatically, so no need to add to your PATH.
+Verify installation:
+```bash
+clogs version
+```
 
-## Usage as a Library
+Requires the `grove` meta-CLI. See the [Grove Installation Guide](https://github.com/mattsolo1/grove-meta/blob/main/docs/02-installation.md) if you don't have it installed.
 
-Clogs can be used as a Go library for custom applications that need to parse or monitor Claude transcripts. For detailed documentation on the Go library API, including examples for setting up monitors, configuring parsers, and handling real-time transcript processing, see [docs/go-library-usage.md](docs/go-library-usage.md).
+<!-- DOCGEN:OVERVIEW:END -->
 
-## Full Documentation
+<!-- DOCGEN:TOC:START -->
 
-For complete documentation, including advanced CLI usage, library API reference, and integration guides, see the [docs](docs/) directory.
+See the [documentation](docs/) for detailed usage instructions:
+- [Overview](docs/01-overview.md) - `grove-claude-logs` (`clogs`) is a command-line tool and Go library for parsi...
+- [Examples](docs/02-examples.md) - This guide provides practical examples of how to use `grove-claude-logs` (`cl...
+- [Command Reference](docs/03-command-reference.md) - This document provides a detailed reference for all commands available in the...
+
+<!-- DOCGEN:TOC:END -->
