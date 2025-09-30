@@ -6,7 +6,8 @@ Create a comprehensive overview that includes:
 1. **High-level description**: What grove-claude-logs is and its purpose in the Grove ecosystem
 2. **Animated GIF placeholder**: Include `<!-- placeholder for animated gif -->`
 3. **Ecosystem Integration**: Explain how grove-claude-logs works with grove-hooks and other Grove tools
-4. **Installation**: Include brief installation instructions at the bottom
+4. **How it works**: Provide a more technical description and exactly what happens under the hood
+5. **Installation**: Include brief installation instructions at the bottom
 
 ## Structure
 - Brief introduction to Claude session transcript parsing and monitoring
