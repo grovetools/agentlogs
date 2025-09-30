@@ -1,5 +1,7 @@
 <!-- DOCGEN:OVERVIEW:START -->
 
+# Grove Claude Logs (`clogs`)
+
 `grove-claude-logs` (`clogs`) is a command-line tool and Go library for parsing, monitoring, and analyzing local Claude AI session transcripts. As part of the Grove developer tool ecosystem, it provides a structured way for developers to inspect, query, and understand their interaction history with Claude, particularly within workflows orchestrated by `grove-flow`.
 
 <!-- placeholder for animated gif -->
@@ -40,8 +42,8 @@ Requires the `grove` meta-CLI. See the [Grove Installation Guide](https://github
 <!-- DOCGEN:TOC:START -->
 
 See the [documentation](docs/) for detailed usage instructions:
-- [Overview](docs/01-overview.md) - `grove-claude-logs` (`clogs`) is a command-line tool and Go library for parsi...
-- [Examples](docs/02-examples.md) - This guide provides practical examples of how to use `grove-claude-logs` (`cl...
-- [Command Reference](docs/03-command-reference.md) - This document provides a detailed reference for all commands available in the...
+- [Overview](docs/01-overview.md)
+- [Examples](docs/02-examples.md)
+- [Command Reference](docs/03-command-reference.md)
 
 <!-- DOCGEN:TOC:END -->

@@ -3,11 +3,10 @@ category: "Developer Tools"
 title: "Grove Claude Logs"
 description: "A CLI tool and Go library for parsing, monitoring, and analyzing Claude AI session transcripts."
 readme:
+  generate_toc: true
   template: docs/README.md.tpl
   output: README.md
   source_section: overview
-  strip_lines: 2
-  generate_toc: true
 enabled: true
 sections:
   - name: overview
