@@ -1,14 +1,14 @@
-# Practical Examples
+# Examples
 
-This guide provides practical examples of how to use `grove-claude-logs` (`clogs`) in common development workflows, from simple command-line inspection to programmatic analysis and integration with the Grove ecosystem.
+This guide provides practical examples of using `grove-claude-logs` (`clogs`) in common development workflows, from command-line inspection to programmatic analysis.
 
 ## Example 1: Basic CLI Usage
 
-This example covers the fundamental workflow for inspecting and querying Claude session logs from the command line. This is the most common use case for developers who need to review an agent's work or debug a `grove-flow` plan.
+This example covers the fundamental workflow for inspecting and querying Claude session logs from the command line. This is a common use case for reviewing an agent's work or debugging a `grove-flow` plan.
 
 #### 1. List All Sessions
 
-To get an overview of all your recent Claude sessions, use the `clogs list` command. It scans for transcript files and displays key metadata.
+To get an overview of recent Claude sessions, use the `clogs list` command. It scans transcript files and displays metadata.
 
 ```bash
 clogs list
@@ -23,11 +23,11 @@ session-beta     my-api-project               debug-plan/02.md      2025-09-26 1
 session-alpha    another-proj                                       2025-09-25 11:00
 ```
 
-This table shows each session's ID, the associated project and worktree, any `grove-flow` jobs that were run, and when the session started.
+The table shows each session's ID, associated project, worktree, any `grove-flow` jobs run, and when the session started.
 
 #### 2. Filter for a Specific Project or Plan
 
-If you have many sessions, you can filter the list with the `--project` (or `-p`) flag. This performs a substring match against the project, worktree, plan, and job names.
+The list can be filtered with the `--project` (or `-p`) flag. This performs a substring match against the project, worktree, plan, and job names.
 
 ```bash
 clogs list --project my-api
@@ -43,7 +43,7 @@ session-beta     my-api-project               debug-plan/02.md      2025-09-26 1
 
 #### 3. Read the Log for a Specific Job
 
-The most powerful feature for debugging is `clogs read`, which isolates the conversation for a single `grove-flow` job. This lets you see exactly what the agent did for a specific task.
+The `clogs read` command isolates the conversation for a single `grove-flow` job. This shows the interaction that occurred for a specific task.
 
 ```bash
 clogs read refactor-plan/01.md
@@ -70,11 +70,11 @@ User: Looks good. Please write a unit test for the new error case.
 === End of session ===
 ```
 
-This output provides the exact conversation transcript related to the specified job, making it easy to review the agent's actions and reasoning.
+This output provides the conversation transcript related to the specified job for reviewing the agent's actions.
 
 #### 4. Query Messages for Scripting
 
-You can retrieve messages in a structured format using `clogs query`. This is useful for scripting or programmatic analysis. The following command gets all of the assistant's messages from a session as a JSON array.
+Messages can be retrieved in a structured format using `clogs query`. The following command gets all of the assistant's messages from a session as a JSON array.
 
 ```bash
 clogs query session-gamma --role assistant --json
@@ -98,7 +98,7 @@ clogs query session-gamma --role assistant --json
 
 ## Example 2: Programmatic Analysis with the Go Library
 
-For more advanced use cases, you can use `clogs` as a Go library to build custom analysis tools. This example demonstrates how to write a simple program to parse a session and count the number of times the agent used a specific tool.
+`clogs` can be used as a Go library to build analysis tools. This example demonstrates a program that parses a session and counts the number of times the agent used a specific tool.
 
 #### Scenario
 
@@ -161,34 +161,34 @@ func main() {
 }
 ```
 
-This program demonstrates how to use the library to find, parse, and analyze transcript files, giving you the ability to build sophisticated custom monitoring and observability tools.
+This program shows how to use the library to find, parse, and analyze transcript files.
 
 ## Example 3: Integration with Grove Flow
 
-`clogs` is designed to integrate deeply with the Grove ecosystem, particularly `grove-flow`. A key integration point is preserving the full execution history of an `interactive_agent` job by appending its Claude transcript to the job's Markdown file.
+A key integration point with `grove-flow` is appending the full Claude transcript to an `interactive_agent` job's Markdown file upon completion.
 
 #### Scenario
 
-You have an `agent` job in a `grove-flow` plan. After the agent completes its task, you want a permanent, auditable record of the entire interaction stored within the plan itself.
+You have an `agent` job in a `grove-flow` plan. After the agent completes its task, you want a record of the interaction stored within the plan itself.
 
 #### The Workflow
 
-1.  **Run the Agent Job**: You start the process as usual with `grove-flow`.
+1.  **Run the Agent Job**: Start the process as usual with `grove-flow`.
     ```bash
     # This command will trigger an agent that interacts with Claude
     flow plan run my-feature-plan/01-implement-api.md
     ```
 
-2.  **Complete the Job**: After the agent has finished its work (e.g., written code, fixed a bug), you mark the job as complete.
+2.  **Complete the Job**: After the agent has finished its work, you mark the job as complete.
     ```bash
     flow plan complete my-feature-plan/01-implement-api.md
     ```
 
-3.  **Automatic Transcript Append**: The `flow plan complete` command automatically performs several actions. One of these is to call `clogs read my-feature-plan/01-implement-api.md` under the hood. It captures the formatted output and appends it to the `01-implement-api.md` file.
+3.  **Automatic Transcript Append**: The `flow plan complete` command calls `clogs read my-feature-plan/01-implement-api.md` under the hood. It captures the formatted output and appends it to the `01-implement-api.md` file.
 
 #### Result
 
-The job's Markdown file is updated to include the full conversation.
+The job's Markdown file is updated to include the conversation.
 
 **`01-implement-api.md` (Before `flow plan complete`):**
 ```markdown
@@ -230,4 +230,4 @@ Agent: I will add the new route to `api/routes.go` and create a new handler in `
 ...
 ```
 
-This integration ensures that your `grove-flow` plan directory becomes a self-contained, complete historical record of the work performed, which is invaluable for code reviews, auditing, and future reference.
+This integration ensures that the `grove-flow` plan directory becomes a self-contained historical record of the work performed.

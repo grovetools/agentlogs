@@ -29,7 +29,7 @@ session-beta     project-beta   feature-x                           2006-01-01 1
 
 **JSON Output**
 
-When the `--json` flag is used, the command outputs a JSON array of session objects, suitable for scripting and programmatic use.
+When the `--json` flag is used, the command outputs a JSON array of session objects.
 
 ```json
 [
@@ -74,7 +74,7 @@ clogs list --json
 
 Reads and displays the conversation log for a specific job within a Grove Flow plan.
 
-The command searches through all session transcripts to find where the specified job was executed. It then prints the conversation starting from that job's invocation until the next job begins or the session ends. This is useful for reviewing the exact interaction that occurred for a single task.
+The command searches through all session transcripts to find where the specified job was executed. It then prints the conversation starting from that job's invocation until the next job begins or the session ends.
 
 ### Argument: `<plan/job>`
 
@@ -142,7 +142,7 @@ clogs query session-alpha --role assistant --json
 
 Displays the last few messages from a specific session transcript.
 
-This provides a quick way to see the most recent activity in a session without viewing the entire log. It currently shows the last 10 messages.
+This provides a way to see the most recent activity in a session without viewing the entire log. It currently shows the last 10 messages.
 
 ### Argument: `<session_id>`
 
@@ -165,7 +165,7 @@ clogs tail session-alpha
 
 Prints the version information for the `clogs` binary.
 
-This command displays the build version, commit hash, branch, and build date, which is useful for debugging and reporting issues.
+This command displays the build version, commit hash, branch, and build date.
 
 ### Flags
 

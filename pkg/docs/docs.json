@@ -1,1 +1,110 @@
-{}
+{
+  "sections": {
+    "command-reference": {
+      "title": "Command Reference",
+      "content": "This document provides a detailed reference for all commands available in the `clogs` command-line interface.",
+      "subsections": [
+        {
+          "title": "clogs list",
+          "content": "Lists all available Claude session transcripts found in the `~/.claude/projects/` directory.\n\nThe command scans transcript files to extract metadata such as the project name, worktree, and any associated Grove Flow jobs, then displays the sessions sorted by start time with the most recent first.\n\n### Flags\n\n| Flag      | Shorthand | Description                                                                   |\n| :-------- | :-------- | :---------------------------------------------------------------------------- |\n| `--json`  |           | Output the list of sessions in JSON format instead of a table.                |\n| `--project` | `-p`      | Filter sessions by a case-insensitive substring match against the project name, worktree, plan, or job. |\n\n### Output Formats\n\n**Default Table Output**\n\nBy default, `clogs list` prints a human-readable table with key information about each session.\n\n\n**JSON Output**\n\nWhen the `--json` flag is used, the command outputs a JSON array of session objects.\n\n\n### Examples\n\n**List all sessions:**\n\n**List sessions for a specific project or plan:**\n\n**Get the list of all sessions in JSON format:**\n\n---",
+          "code_blocks": [
+            "SESSION ID       PROJECT        WORKTREE      JOBS                  STARTED\nsession-alpha    project-alpha                my-plan/01-setup.md   2006-01-02 15:04\nsession-beta     project-beta   feature-x                           2006-01-01 12:00",
+            "[\n  {\n    \"sessionId\": \"session-alpha\",\n    \"projectName\": \"project-alpha\",\n    \"projectPath\": \"/path/to/project-alpha\",\n    \"worktree\": \"\",\n    \"jobs\": [\n      {\n        \"plan\": \"my-plan\",\n        \"job\": \"01-setup.md\",\n        \"lineIndex\": 25\n      }\n    ],\n    \"logFilePath\": \"/home/user/.claude/projects/project-alpha/session-alpha.jsonl\",\n    \"startedAt\": \"2006-01-02T15:04:05Z\"\n  }\n]",
+            "clogs list",
+            "clogs list --project my-project",
+            "clogs list --json"
+          ]
+        },
+        {
+          "title": "clogs read",
+          "content": "Reads and displays the conversation log for a specific job within a Grove Flow plan.\n\nThe command searches through all session transcripts to find where the specified job was executed. It then prints the conversation starting from that job's invocation until the next job begins or the session ends.\n\n### Argument: `\u003cplan/job\u003e`\n\nThe required argument must be in the format `plan-name/job-filename.md`. For example: `my-feature-plan/01-implement-api.md`.\n\n### Flags\n\n| Flag      | Shorthand | Description                                                    |\n| :-------- | :-------- | :------------------------------------------------------------- |\n| `--session` | `-s`      | Specify a session ID if multiple sessions contain the same job. |\n| `--project` | `-p`      | Filter the search to sessions within a specific project.        |\n\n### Examples\n\n**Read the log for a specific job:**\n\n**Read the log for a job within a specific project to narrow the search:**\nIf multiple sessions are found for the same job, `clogs` will list them and prompt you to re-run the command with the `--session` flag.\n\n---",
+          "code_blocks": [
+            "clogs read my-plan/02-write-tests.md",
+            "clogs read my-plan/02-write-tests.md --project my-api"
+          ]
+        },
+        {
+          "title": "clogs query",
+          "content": "Queries and filters messages from a specific session transcript.\n\nThis command allows you to retrieve all messages from a session or filter them by role (`user` or `assistant`). The output can be formatted as plain text or structured JSON.\n\n### Argument: `\u003csession_id\u003e`\n\nThe required argument is the session ID of the transcript to query.\n\n### Flags\n\n| Flag     | Shorthand | Description                                        |\n| :------- | :-------- | :------------------------------------------------- |\n| `--role` |           | Filter messages by role: `user` or `assistant`.    |\n| `--json` |           | Output the matching messages in JSON format.       |\n\n### Examples\n\n**Query all messages from a session:**\n\n**Query only the user's messages from a session:**\n\n**Get all of the assistant's messages as JSON:**\n\n---",
+          "code_blocks": [
+            "clogs query session-alpha",
+            "clogs query session-alpha --role user",
+            "clogs query session-alpha --role assistant --json"
+          ]
+        },
+        {
+          "title": "clogs tail",
+          "content": "Displays the last few messages from a specific session transcript.\n\nThis provides a way to see the most recent activity in a session without viewing the entire log. It currently shows the last 10 messages.\n\n### Argument: `\u003csession_id\u003e`\n\nThe required argument is the session ID of the transcript to tail.\n\n### Flags\n\nThis command has no flags.\n\n### Examples\n\n**Tail a specific session:**\n\n---",
+          "code_blocks": [
+            "clogs tail session-alpha"
+          ]
+        },
+        {
+          "title": "clogs version",
+          "content": "Prints the version information for the `clogs` binary.\n\nThis command displays the build version, commit hash, branch, and build date.\n\n### Flags\n\n| Flag     | Shorthand | Description                            |\n| :------- | :-------- | :------------------------------------- |\n| `--json` |           | Output version information in JSON format. |\n\n### Examples\n\n**Show the version information:**\n\n**Get the version information as JSON:**",
+          "code_blocks": [
+            "clogs version",
+            "clogs version --json"
+          ]
+        }
+      ]
+    },
+    "examples": {
+      "title": "Examples",
+      "content": "This guide provides practical examples of using `grove-claude-logs` (`clogs`) in common development workflows, from command-line inspection to programmatic analysis.",
+      "subsections": [
+        {
+          "title": "Example 1: Basic CLI Usage",
+          "content": "This example covers the fundamental workflow for inspecting and querying Claude session logs from the command line. This is a common use case for reviewing an agent's work or debugging a `grove-flow` plan.\n\n#### 1. List All Sessions\n\nTo get an overview of recent Claude sessions, use the `clogs list` command. It scans transcript files and displays metadata.\n\n\n**Expected Output:**\n\n\nThe table shows each session's ID, associated project, worktree, any `grove-flow` jobs run, and when the session started.\n\n#### 2. Filter for a Specific Project or Plan\n\nThe list can be filtered with the `--project` (or `-p`) flag. This performs a substring match against the project, worktree, plan, and job names.\n\n\n**Expected Output:**\n\n\n#### 3. Read the Log for a Specific Job\n\nThe `clogs read` command isolates the conversation for a single `grove-flow` job. This shows the interaction that occurred for a specific task.\n\n\n**Expected Output:**\n\n\nThis output provides the conversation transcript related to the specified job for reviewing the agent's actions.\n\n#### 4. Query Messages for Scripting\n\nMessages can be retrieved in a structured format using `clogs query`. The following command gets all of the assistant's messages from a session as a JSON array.\n\n\n**Expected Output:**",
+          "code_blocks": [
+            "clogs list",
+            "SESSION ID       PROJECT        WORKTREE      JOBS                  STARTED\nsession-gamma    my-api-project feature-x      refactor-plan/01.md   2025-09-26 15:30\nsession-beta     my-api-project               debug-plan/02.md      2025-09-26 14:00\nsession-alpha    another-proj                                       2025-09-25 11:00",
+            "clogs list --project my-api",
+            "SESSION ID       PROJECT        WORKTREE      JOBS                  STARTED\nsession-gamma    my-api-project feature-x      refactor-plan/01.md   2025-09-26 15:30\nsession-beta     my-api-project               debug-plan/02.md      2025-09-26 14:00",
+            "clogs read refactor-plan/01.md",
+            "=== Job: refactor-plan/01.md ===\nProject: my-api-project\nSession: session-gamma\nStarting at line: 42\n\nUser: Read the file src/main.go and execute the agent job.\n\nAgent: [Using read_file on src/main.go]\nAgent: Okay, I have read the file. I will now refactor the `handleRequest` function to improve error handling.\n\nAgent: [Using apply_patch on src/main.go]\n\nUser: Looks good. Please write a unit test for the new error case.\n\n...\n=== End of session ===",
+            "clogs query session-gamma --role assistant --json",
+            "[\n  {\n    \"SessionID\": \"session-gamma\",\n    \"MessageID\": \"msg_01J6...\",\n    \"Timestamp\": \"2025-09-26T15:31:00Z\",\n    \"Role\": \"assistant\",\n    \"Content\": \"Okay, I have read the file...\",\n    \"RawContent\": \"...\",\n    \"Metadata\": { ... }\n  }\n]"
+          ]
+        },
+        {
+          "title": "Example 2: Programmatic Analysis with the Go Library",
+          "content": "`clogs` can be used as a Go library to build analysis tools. This example demonstrates a program that parses a session and counts the number of times the agent used a specific tool.\n\n#### Scenario\n\nYou want to analyze an agent's behavior in `session-gamma` to see how many times it modified files using the `apply_patch` tool.\n\n#### Go Program\n\n\nThis program shows how to use the library to find, parse, and analyze transcript files.",
+          "code_blocks": [
+            "package main\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n\t\"log\"\n\n\t\"github.com/mattsolo1/grove-claude-logs/pkg/claudelogs\"\n)\n\nfunc main() {\n\tsessionID := \"session-gamma\"\n\ttoolNameToCount := \"apply_patch\"\n\ttoolUseCount := 0\n\n\t// 1. Get the path to the transcript file\n\tpath, err := claudelogs.GetTranscriptPath(sessionID)\n\tif err != nil {\n\t\tlog.Fatalf(\"Could not find transcript for session %s: %v\", sessionID, err)\n\t}\n\n\t// 2. Create a new parser and parse the file\n\tparser := claudelogs.NewParser()\n\tmessages, err := parser.ParseFile(path)\n\tif err != nil {\n\t\tlog.Fatalf(\"Failed to parse transcript: %v\", err)\n\t}\n\n\t// 3. Iterate through messages and analyze content\n\tfor _, msg := range messages {\n\t\tif msg.Role != \"assistant\" {\n\t\t\tcontinue\n\t\t}\n\n\t\t// Assistant messages can have multiple content blocks (text, tool_use)\n\t\tvar contentBlocks []struct {\n\t\t\tType string `json:\"type\"`\n\t\t\tName string `json:\"name\"`\n\t\t}\n\n\t\tif err := json.Unmarshal(msg.RawContent, \u0026contentBlocks); err == nil {\n\t\t\tfor _, block := range contentBlocks {\n\t\t\t\tif block.Type == \"tool_use\" \u0026\u0026 block.Name == toolNameToCount {\n\t\t\t\t\ttoolUseCount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\n\tfmt.Printf(\"Analysis complete for session %s:\\n\", sessionID)\n\tfmt.Printf(\"The '%s' tool was used %d times.\\n\", toolNameToCount, toolUseCount)\n}"
+          ]
+        },
+        {
+          "title": "Example 3: Integration with Grove Flow",
+          "content": "A key integration point with `grove-flow` is appending the full Claude transcript to an `interactive_agent` job's Markdown file upon completion.\n\n#### Scenario\n\nYou have an `agent` job in a `grove-flow` plan. After the agent completes its task, you want a record of the interaction stored within the plan itself.\n\n#### The Workflow\n\n1.  **Run the Agent Job**: Start the process as usual with `grove-flow`.\n    ```bash\n    # This command will trigger an agent that interacts with Claude\n    flow plan run my-feature-plan/01-implement-api.md\n    ```\n\n2.  **Complete the Job**: After the agent has finished its work, you mark the job as complete.\n    ```bash\n    flow plan complete my-feature-plan/01-implement-api.md\n    ```\n\n3.  **Automatic Transcript Append**: The `flow plan complete` command calls `clogs read my-feature-plan/01-implement-api.md` under the hood. It captures the formatted output and appends it to the `01-implement-api.md` file.\n\n#### Result\n\nThe job's Markdown file is updated to include the conversation.\n\n**`01-implement-api.md` (Before `flow plan complete`):**\n\n**`01-implement-api.md` (After `flow plan complete`):**\n\nThis integration ensures that the `grove-flow` plan directory becomes a self-contained historical record of the work performed.",
+          "code_blocks": [
+            "---\nid: job-xyz\ntitle: Implement API\ntype: agent\nstatus: running\n---\n\nPlease implement the user API endpoint as discussed.",
+            "---\nid: job-xyz\ntitle: Implement API\ntype: agent\nstatus: completed\nsummary: \"Implemented the /users endpoint and added basic CRUD operations.\"\n---\n\nPlease implement the user API endpoint as discussed.\n\n---\n## Agent Transcript\n*Appended by `grove-flow` on 2025-09-26*\n\n=== Job: my-feature-plan/01-implement-api.md ===\nProject: my-api-project\nSession: session-gamma\nStarting at line: 85\n\nUser: Implement the user API endpoint.\n\nAgent: [Using read_file on api/routes.go]\nAgent: I will add the new route to `api/routes.go` and create a new handler in `api/handlers/user.go`.\n..."
+          ]
+        }
+      ]
+    },
+    "overview": {
+      "title": "Overview",
+      "content": "`grove-claude-logs` (`clogs`) is a command-line tool and Go library for parsing, monitoring, and analyzing local Claude AI session transcripts. It provides a structured way to inspect, query, and understand interaction history with Claude, particularly within workflows orchestrated by `grove-flow`.\n\n\u003c!-- placeholder for animated gif --\u003e\n\n### Key Features\n\n*   **Session Listing and Filtering**: Lists session transcripts and filters them by project, worktree, or job name.\n*   **Targeted Log Reading**: Reads the conversation log for a specified `grove-flow` job.\n*   **Message Querying**: Filters messages within a session by role (`user` or `assistant`) and provides JSON output.\n*   **Real-Time Monitoring**: Provides a Go library for monitoring transcript files for new messages.\n*   **Grove Integration**: Discovers transcripts and extracts metadata related to Grove projects, worktrees, and plans.",
+      "subsections": [
+        {
+          "title": "How It Works",
+          "content": "The `clogs` tool functions by scanning the `~/.claude/projects/` directory for `*.jsonl` files, where each file represents a session transcript. It parses these files line by line to extract messages and metadata, including the session ID and the original working directory. `grove-flow` job associations are determined by parsing user prompts within the transcript that match the execution pattern of an agent job, allowing `clogs` to link segments of a conversation to specific tasks in a plan."
+        },
+        {
+          "title": "Ecosystem Integration",
+          "content": "`clogs` is an observability component within the Grove ecosystem that provides data on LLM agent behavior.\n\n*   **`grove-flow`**: `clogs` is used to review the execution of `grove-flow` plans. Since agents write their interactions to Claude transcripts, `clogs` allows a developer to debug a plan by reading the conversation that occurred for a specific job (e.g., `clogs read my-plan/01-setup.md`).\n*   **`grove-hooks`**: `clogs` can act as a data source for the wider ecosystem. Its ability to parse and monitor transcripts can produce structured events about LLM interactions. These events can be published via `grove-hooks` to be consumed by other tools, such as dashboards or automated analysis agents."
+        },
+        {
+          "title": "Installation",
+          "content": "Install via the Grove meta-CLI:\n\nVerify installation:\n\nRequires the `grove` meta-CLI. See the [Grove Installation Guide](https://github.com/mattsolo1/grove-meta/blob/main/docs/02-installation.md) if you don't have it installed.",
+          "code_blocks": [
+            "grove install claude-logs",
+            "clogs version"
+          ]
+        }
+      ]
+    }
+  }
+}
