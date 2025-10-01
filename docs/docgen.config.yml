@@ -1,13 +1,20 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/mattsolo1/grove-docgen/main/schema/docgen.config.schema.json
-category: "Developer Tools"
 title: "Grove Claude Logs"
 description: "A CLI tool and Go library for parsing, monitoring, and analyzing Claude AI session transcripts."
+category: "Developer Tools"
+enabled: true
+settings:
+  output_dir: docs
+  rules_file: docs.rules
+  structured_output_file: pkg/docs/docs.json
+  system_prompt: default
+  model: gemini-2.5-pro
+  regeneration_mode: reference
 readme:
   generate_toc: true
   template: docs/README.md.tpl
   output: README.md
   source_section: overview
-enabled: true
 sections:
   - name: overview
     order: 1
@@ -24,8 +31,3 @@ sections:
     output: 03-command-reference.md
     prompt: prompts/03-command-reference.md
     title: Command Reference
-settings:
-  output_dir: docs
-  rules_file: docs.rules
-  structured_output_file: pkg/docs/docs.json
-  system_prompt: default
