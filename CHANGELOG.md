@@ -1,3 +1,5 @@
+## v0.1.1-nightly.9e6a2c9 (2025-10-03)
+
 ## v0.1.0 (2025-10-01)
 
 This release introduces a comprehensive documentation suite, generated using `docgen`. The documentation has been structured into an overview, practical examples, and a full command reference (5a4b6ef, e89acbe). The generation process itself was improved with support for a Table of Contents (e2eafab), more succinct content (e1d10cf), and standardized configuration (a6ebb43).
