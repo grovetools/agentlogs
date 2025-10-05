@@ -10,10 +10,11 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
-	
+
 	"github.com/mattsolo1/grove-claude-logs/cmd"
 	"github.com/mattsolo1/grove-claude-logs/internal/transcript"
 	"github.com/mattsolo1/grove-core/cli"
+	"github.com/mattsolo1/grove-core/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -30,27 +31,35 @@ type SessionInfo struct {
 	ProjectName string    `json:"projectName"`
 	ProjectPath string    `json:"projectPath"`
 	Worktree    string    `json:"worktree,omitempty"`
+	Ecosystem   string    `json:"ecosystem,omitempty"`
 	Jobs        []JobInfo `json:"jobs,omitempty"`
 	LogFilePath string    `json:"logFilePath"`
 	StartedAt   time.Time `json:"startedAt"`
 }
 
-// parseProjectPath extracts the actual project path and worktree name from a path
-func parseProjectPath(cwd string) (projectPath, projectName, worktree string) {
-	// Check if this is a worktree path
-	parts := strings.Split(cwd, "/.grove-worktrees/")
-	if len(parts) == 2 {
-		// This is a worktree
-		projectPath = parts[0]
-		projectName = filepath.Base(projectPath)
-		worktree = parts[1]
-	} else {
-		// Regular project
-		projectPath = cwd
+// parseProjectPath extracts project information using grove-core workspace package
+func parseProjectPath(cwd string) (projectPath, projectName, worktree, ecosystem string) {
+	// Use workspace.GetProjectByPath for robust project discovery
+	projInfo, err := workspace.GetProjectByPath(cwd)
+	if err != nil {
+		// Fallback for paths that no longer exist or other errors
 		projectName = filepath.Base(cwd)
+		projectPath = cwd
 		worktree = ""
+		ecosystem = ""
+		return
 	}
-	return projectPath, projectName, worktree
+
+	projectName = projInfo.Name
+	projectPath = projInfo.Path
+	worktree = ""
+	if projInfo.IsWorktree {
+		worktree = projInfo.Name
+	}
+	if projInfo.ParentEcosystemPath != "" {
+		ecosystem = filepath.Base(projInfo.ParentEcosystemPath)
+	}
+	return
 }
 
 // parsePlanInfo extracts plan and job information from a message content
@@ -227,12 +236,13 @@ func newListCmd() *cobra.Command {
 					continue
 				}
 
-				projectPath, projectName, worktree := parseProjectPath(info.Cwd)
+				projectPath, projectName, worktree, ecosystem := parseProjectPath(info.Cwd)
 				sessions = append(sessions, SessionInfo{
 					SessionID:   info.SessionID,
 					ProjectName: projectName,
 					ProjectPath: projectPath,
 					Worktree:    worktree,
+					Ecosystem:   ecosystem,
 					Jobs:        jobs,
 					LogFilePath: logPath,
 					StartedAt:   info.Timestamp,
@@ -286,7 +296,7 @@ func newListCmd() *cobra.Command {
 			} else {
 				// Print formatted table
 				w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-				fmt.Fprintln(w, "SESSION ID\tPROJECT\tWORKTREE\tJOBS\tSTARTED")
+				fmt.Fprintln(w, "SESSION ID\tECOSYSTEM\tPROJECT\tWORKTREE\tJOBS\tSTARTED")
 				for _, s := range sessions {
 					jobsStr := ""
 					if len(s.Jobs) > 0 {
@@ -295,8 +305,8 @@ func newListCmd() *cobra.Command {
 							jobsStr += fmt.Sprintf(" (+%d more)", len(s.Jobs)-1)
 						}
 					}
-					fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", 
-						s.SessionID, s.ProjectName, s.Worktree, jobsStr,
+					fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+						s.SessionID, s.Ecosystem, s.ProjectName, s.Worktree, jobsStr,
 						s.StartedAt.Format("2006-01-02 15:04"))
 				}
 				w.Flush()
@@ -520,12 +530,12 @@ func newReadCmd() *cobra.Command {
 				
 				// Apply project filter if specified
 				if projectFilter != "" && hasSessionInfo {
-					_, projectName, _ := parseProjectPath(sessionInfo.Cwd)
+					_, projectName, _, _ := parseProjectPath(sessionInfo.Cwd)
 					if !strings.Contains(strings.ToLower(projectName), strings.ToLower(projectFilter)) {
 						continue
 					}
 				}
-				
+
 				// Check if this session has the job we're looking for
 				for i, job := range jobs {
 					if job.Plan == planName && job.Job == jobName {
@@ -533,10 +543,10 @@ func newReadCmd() *cobra.Command {
 						if i+1 < len(jobs) {
 							nextLine = jobs[i+1].LineIndex
 						}
-						
+
 						// Extract session ID from the log
 						baseName := strings.TrimSuffix(filepath.Base(logPath), ".jsonl")
-						_, projectName, _ := parseProjectPath(sessionInfo.Cwd)
+						_, projectName, _, _ := parseProjectPath(sessionInfo.Cwd)
 						
 						found = append(found, jobMatch{
 							sessionID:   baseName,
