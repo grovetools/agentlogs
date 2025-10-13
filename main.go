@@ -50,13 +50,26 @@ func parseProjectPath(cwd string) (projectPath, projectName, worktree, ecosystem
 		return
 	}
 
-	projectName = projInfo.Name
-	projectPath = projInfo.Path
-	worktree = ""
-	if projInfo.IsWorktree {
+	if projInfo.IsWorktree() {
 		worktree = projInfo.Name
+		if projInfo.ParentProjectPath != "" {
+			projectPath = projInfo.ParentProjectPath
+			projectName = filepath.Base(projInfo.ParentProjectPath)
+		} else {
+			// Fallback for worktrees without a parent project path.
+			// This might occur for an ecosystem worktree where the parent is the ecosystem itself.
+			projectPath = projInfo.Path
+			projectName = projInfo.Name
+		}
+	} else {
+		projectName = projInfo.Name
+		projectPath = projInfo.Path
+		worktree = ""
 	}
-	if projInfo.ParentEcosystemPath != "" {
+
+	if projInfo.RootEcosystemPath != "" {
+		ecosystem = filepath.Base(projInfo.RootEcosystemPath)
+	} else if projInfo.ParentEcosystemPath != "" {
 		ecosystem = filepath.Base(projInfo.ParentEcosystemPath)
 	}
 	return
