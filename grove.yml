@@ -3,3 +3,6 @@ description: Claude transcript log parsing and monitoring
 binary:
   name: clogs
   path: ./bin/clogs
+
+context:
+  default_rules_path: .cx/dev-no-tests.rules
