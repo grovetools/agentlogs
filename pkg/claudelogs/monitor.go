@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/mattsolo1/grove-claude-logs/internal/transcript"
+	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 )
 
 // Monitor wraps the internal transcript monitor

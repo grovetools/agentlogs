@@ -1,6 +1,6 @@
-# Makefile for grove-claude-logs (clogs)
+# Makefile for grove-agent-logs (aglogs)
 
-BINARY_NAME=clogs
+BINARY_NAME=aglogs
 E2E_BINARY_NAME=tend
 BIN_DIR=bin
 VERSION_PKG=github.com/mattsolo1/grove-core/version
@@ -94,12 +94,12 @@ build-all:
 	done
 
 # --- E2E Testing ---
-# Build the custom tend binary for grove-claude-logs E2E tests.
+# Build the custom tend binary for grove-agent-logs E2E tests.
 test-e2e-build:
 	@echo "Building E2E test binary $(E2E_BINARY_NAME)..."
 	@go build $(LDFLAGS) -o $(BIN_DIR)/$(E2E_BINARY_NAME) ./tests/e2e
 
-# Run E2E tests. Depends on the main 'clogs' binary and the test runner.
+# Run E2E tests. Depends on the main 'aglogs' binary and the test runner.
 # Pass arguments via ARGS, e.g., make test-e2e ARGS="run -i"
 test-e2e: build test-e2e-build
 	@echo "Running E2E tests..."

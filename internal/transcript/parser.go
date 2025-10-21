@@ -58,6 +58,13 @@ type ExtractedMessage struct {
 	Metadata   map[string]any
 }
 
+// CodexLogEntry represents a single entry in the Codex JSONL log
+type CodexLogEntry struct {
+	SessionID string    `json:"session_id"`
+	Timestamp int64     `json:"ts"`
+	Text      string    `json:"text"`
+}
+
 // Parser handles JSONL transcript parsing
 type Parser struct {
 	// Nothing needed for now, but allows for future configuration
@@ -157,6 +164,98 @@ func (p *Parser) parseFromReader(file *os.File, startOffset int64) ([]ExtractedM
 	return messages, nil
 }
 
+// parseCodexFromReader parses Codex JSONL format from a reader
+func (p *Parser) parseCodexFromReader(file *os.File, startOffset int64) ([]ExtractedMessage, error) {
+	var messages []ExtractedMessage
+	scanner := bufio.NewScanner(file)
+
+	// Increase buffer size for large JSON lines
+	const maxScanTokenSize = 1024 * 1024 // 1MB
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxScanTokenSize)
+
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Bytes()
+
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
+
+		var entry CodexLogEntry
+		if err := json.Unmarshal(line, &entry); err != nil {
+			// Log but don't fail on individual line errors
+			fmt.Printf("Warning: Failed to parse Codex line %d: %v\n", lineNum, err)
+			continue
+		}
+
+		// Extract message from Codex log entry
+		if entry.Text != "" {
+			timestamp := time.Unix(entry.Timestamp, 0)
+
+			// Simple heuristic: if message starts with "User:", it's a user message
+			// otherwise it's an assistant message. This is a simplification.
+			// A more robust approach would track state or parse the text structure.
+			role := "assistant"
+			text := entry.Text
+
+			messageID := fmt.Sprintf("codex_%s_%d", entry.SessionID, entry.Timestamp)
+
+			metadata := make(map[string]any)
+			metadata["provider"] = "codex"
+
+			extracted := &ExtractedMessage{
+				SessionID:  entry.SessionID,
+				MessageID:  messageID,
+				Timestamp:  timestamp,
+				Role:       role,
+				Content:    text,
+				RawContent: line,
+				Metadata:   metadata,
+			}
+
+			messages = append(messages, *extracted)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return messages, fmt.Errorf("scanner error: %w", err)
+	}
+
+	return messages, nil
+}
+
+// ParseCodexFileFromOffset parses a Codex JSONL file starting from a specific byte offset
+func (p *Parser) ParseCodexFileFromOffset(path string, offset int64) ([]ExtractedMessage, int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, offset, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Seek to the offset
+	if offset > 0 {
+		if _, err := file.Seek(offset, 0); err != nil {
+			return nil, offset, fmt.Errorf("failed to seek to offset %d: %w", offset, err)
+		}
+	}
+
+	messages, err := p.parseCodexFromReader(file, offset)
+	if err != nil {
+		return nil, offset, err
+	}
+
+	// Get new offset
+	newOffset, err := file.Seek(0, 1) // Get current position
+	if err != nil {
+		return messages, offset, fmt.Errorf("failed to get new offset: %w", err)
+	}
+
+	return messages, newOffset, nil
+}
+
 // extractMessage extracts a simplified message from a transcript entry
 func (p *Parser) extractMessage(entry TranscriptEntry) *ExtractedMessage {
 	if entry.Message == nil {
@@ -230,23 +329,36 @@ func (p *Parser) extractMessage(entry TranscriptEntry) *ExtractedMessage {
 }
 
 // GetTranscriptPath finds the transcript path for a session
-func GetTranscriptPath(sessionID string) (string, error) {
-	// Claude stores transcripts in a predictable location
+// provider should be "claude" or "codex"
+func GetTranscriptPath(sessionID string, provider string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 
-	// Look for the transcript file
-	pattern := fmt.Sprintf("%s/.claude/projects/*/%s.jsonl", homeDir, sessionID)
+	var pattern string
+	if provider == "codex" {
+		// Codex stores logs in ~/.codex/sessions/YYYY/MM/DD/*.jsonl
+		// We need to search recursively for files containing the session ID
+		pattern = fmt.Sprintf("%s/.codex/sessions/*/*/*/*%s*.jsonl", homeDir, sessionID)
+	} else {
+		// Default to Claude format
+		pattern = fmt.Sprintf("%s/.claude/projects/*/%s.jsonl", homeDir, sessionID)
+	}
+
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return "", err
 	}
 
 	if len(matches) == 0 {
-		return "", fmt.Errorf("transcript not found for session %s", sessionID)
+		return "", fmt.Errorf("transcript not found for session %s (provider: %s)", sessionID, provider)
 	}
 
 	return matches[0], nil
+}
+
+// GetTranscriptPathLegacy finds the transcript path for a Claude session (backward compatibility)
+func GetTranscriptPathLegacy(sessionID string) (string, error) {
+	return GetTranscriptPath(sessionID, "claude")
 }

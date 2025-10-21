@@ -1,4 +1,4 @@
-module github.com/mattsolo1/grove-claude-logs
+module github.com/mattsolo1/grove-agent-logs
 
 go 1.24.4
 

@@ -11,6 +11,12 @@ import (
 	"github.com/mattsolo1/grove-core/pkg/models"
 )
 
+// SessionWithProvider wraps a session with its provider info
+type SessionWithProvider struct {
+	Session  *models.Session
+	Provider string
+}
+
 // Monitor handles periodic transcript monitoring and extraction
 type Monitor struct {
 	db             *sql.DB
@@ -130,21 +136,22 @@ func (m *Monitor) processActiveSessions() {
 	}
 
 	log.Printf("Processing %d active sessions", len(sessions))
-	for _, session := range sessions {
-		m.processSession(session)
+	for _, sessionWithProvider := range sessions {
+		m.processSession(sessionWithProvider)
 	}
 }
 
 // getActiveSessions retrieves all active sessions from the database
-func (m *Monitor) getActiveSessions() ([]*models.Session, error) {
+func (m *Monitor) getActiveSessions() ([]*SessionWithProvider, error) {
 	// Query active and recently completed sessions
 	rows, err := m.db.Query(`
 		SELECT id, pid, repo, branch, tmux_key, working_directory, user,
 		       status, started_at, ended_at, last_activity, is_test,
-		       tool_stats, session_summary
+		       tool_stats, session_summary, COALESCE(provider, 'claude') AS provider,
+		       COALESCE(claude_session_id, '') AS claude_session_id
 		FROM sessions
-		WHERE is_deleted = FALSE 
-		  AND (status = 'running' 
+		WHERE is_deleted = FALSE
+		  AND (status = 'running'
 		       OR (status = 'completed' AND ended_at > datetime('now', '-5 minutes')))
 	`)
 	if err != nil {
@@ -152,17 +159,18 @@ func (m *Monitor) getActiveSessions() ([]*models.Session, error) {
 	}
 	defer rows.Close()
 
-	var sessions []*models.Session
+	var sessions []*SessionWithProvider
 	for rows.Next() {
 		session := &models.Session{}
 		var toolStatsJSON, sessionSummaryJSON sql.NullString
 		var endedAt sql.NullTime
+		var provider, claudeSessionID string
 
 		err := rows.Scan(
 			&session.ID, &session.PID, &session.Repo, &session.Branch,
 			&session.TmuxKey, &session.WorkingDirectory, &session.User,
 			&session.Status, &session.StartedAt, &endedAt, &session.LastActivity,
-			&session.IsTest, &toolStatsJSON, &sessionSummaryJSON,
+			&session.IsTest, &toolStatsJSON, &sessionSummaryJSON, &provider, &claudeSessionID,
 		)
 		if err != nil {
 			continue
@@ -171,6 +179,9 @@ func (m *Monitor) getActiveSessions() ([]*models.Session, error) {
 		if endedAt.Valid {
 			session.EndedAt = &endedAt.Time
 		}
+
+		// Store claude_session_id
+		session.ClaudeSessionID = claudeSessionID
 
 		// Parse JSON fields
 		if toolStatsJSON.Valid {
@@ -183,34 +194,54 @@ func (m *Monitor) getActiveSessions() ([]*models.Session, error) {
 			}
 		}
 
-		sessions = append(sessions, session)
+		// Wrap with provider info
+		sessions = append(sessions, &SessionWithProvider{
+			Session:  session,
+			Provider: provider,
+		})
 	}
 
 	return sessions, nil
 }
 
 // processSession processes a single session for new messages
-func (m *Monitor) processSession(session *models.Session) {
-	log.Printf("Processing session %s (status: %s)", session.ID, session.Status)
+func (m *Monitor) processSession(swp *SessionWithProvider) {
+	session := swp.Session
+	provider := swp.Provider
 
-	// Find transcript file
-	transcriptPath, err := GetTranscriptPath(session.ID)
+	log.Printf("Processing session %s (status: %s, provider: %s)", session.ID, session.Status, provider)
+
+	// Determine the session ID to use for transcript lookup
+	// For interactive_agent jobs, use ClaudeSessionID if available
+	transcriptSessionID := session.ID
+	if session.ClaudeSessionID != "" {
+		transcriptSessionID = session.ClaudeSessionID
+	}
+
+	// Find transcript file with provider-aware path
+	transcriptPath, err := GetTranscriptPath(transcriptSessionID, provider)
 	if err != nil {
-		// This is normal if Claude hasn't created the file yet
-		log.Printf("Transcript not found for session %s: %v", session.ID, err)
+		// This is normal if the agent hasn't created the file yet
+		log.Printf("Transcript not found for session %s (provider: %s): %v", transcriptSessionID, provider, err)
 		return
 	}
-	log.Printf("Found transcript for session %s at %s", session.ID, transcriptPath)
+	log.Printf("Found transcript for session %s (provider: %s) at %s", session.ID, provider, transcriptPath)
 
 	// Get current offset
 	m.offsetsMutex.RLock()
 	offset := m.fileOffsets[session.ID]
 	m.offsetsMutex.RUnlock()
 
-	// Parse new messages from offset
-	messages, newOffset, err := m.parser.ParseFileFromOffset(transcriptPath, offset)
+	// Parse new messages from offset - use provider-specific parser
+	var messages []ExtractedMessage
+	var newOffset int64
+	if provider == "codex" {
+		messages, newOffset, err = m.parser.ParseCodexFileFromOffset(transcriptPath, offset)
+	} else {
+		messages, newOffset, err = m.parser.ParseFileFromOffset(transcriptPath, offset)
+	}
 	if err != nil {
-		log.Printf("Failed to parse transcript for session %s: %v", session.ID, err)
+		log.Printf("Failed to parse transcript for session %s (provider: %s): %v", session.ID, provider, err)
 		return
 	}
 

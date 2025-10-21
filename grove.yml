@@ -1,8 +1,8 @@
-name: grove-claude-logs
-description: Claude transcript log parsing and monitoring
+name: grove-agent-logs
+description: Agent transcript log parsing and monitoring
 binary:
-  name: clogs
-  path: ./bin/clogs
+  name: aglogs
+  path: ./bin/aglogs
 
 context:
   default_rules_path: .cx/dev-no-tests.rules

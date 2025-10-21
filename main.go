@@ -11,8 +11,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/mattsolo1/grove-claude-logs/cmd"
-	"github.com/mattsolo1/grove-claude-logs/internal/transcript"
+	"github.com/mattsolo1/grove-agent-logs/cmd"
+	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 	"github.com/mattsolo1/grove-core/cli"
 	"github.com/mattsolo1/grove-core/pkg/workspace"
 	"github.com/spf13/cobra"
@@ -112,8 +112,8 @@ func parsePlanInfo(content string) (plan, job string) {
 
 func main() {
 	rootCmd := cli.NewStandardCommand(
-		"clogs",
-		"Claude transcript log parsing and monitoring",
+		"aglogs",
+		"Agent transcript log parsing and monitoring",
 	)
 	
 	// Add subcommands
@@ -342,8 +342,8 @@ func newTailCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessionID := args[0]
-			
-			transcriptPath, err := transcript.GetTranscriptPath(sessionID)
+
+			transcriptPath, err := transcript.GetTranscriptPathLegacy(sessionID)
 			if err != nil {
 				return fmt.Errorf("failed to find transcript: %w", err)
 			}
@@ -383,8 +383,8 @@ func newQueryCmd() *cobra.Command {
 			sessionID := args[0]
 			role, _ := cmd.Flags().GetString("role")
 			jsonOutput, _ := cmd.Flags().GetBool("json")
-			
-			transcriptPath, err := transcript.GetTranscriptPath(sessionID)
+
+			transcriptPath, err := transcript.GetTranscriptPathLegacy(sessionID)
 			if err != nil {
 				return fmt.Errorf("failed to find transcript: %w", err)
 			}
