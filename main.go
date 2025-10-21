@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -142,94 +143,33 @@ func newListCmd() *cobra.Command {
 				return fmt.Errorf("failed to get home directory: %w", err)
 			}
 			
-			projectsDir := filepath.Join(homeDir, ".claude", "projects")
-			pattern := filepath.Join(projectsDir, "*", "*.jsonl")
-			matches, err := filepath.Glob(pattern)
-			if err != nil {
-				return fmt.Errorf("failed to glob for transcripts: %w", err)
+			// Search both Claude and Codex log directories
+			claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
+			claudeMatches, _ := filepath.Glob(claudePattern)
+
+			codexPattern := filepath.Join(homeDir, ".codex", "sessions", "*", "*", "*", "*.jsonl")
+			codexMatches, _ := filepath.Glob(codexPattern)
+
+			matches := append(claudeMatches, codexMatches...)
+			if len(matches) == 0 {
+				fmt.Println("No session transcripts found.")
+				return nil
 			}
-			
+
 			var sessions []SessionInfo
 			for _, logPath := range matches {
-				file, err := os.Open(logPath)
-				if err != nil {
-					continue // Skip files we can't read
-				}
-
-				var info struct {
-					Cwd       string    `json:"cwd"`
-					SessionID string    `json:"sessionId"`
-					Timestamp time.Time `json:"timestamp"`
-					Type      string    `json:"type"`
-					Message   struct {
-						Role    string `json:"role"`
-						Content string `json:"content"`
-					} `json:"message"`
-				}
-
-				found := false
+				var sessionID, cwd string
+				var startedAt time.Time
 				var jobs []JobInfo
-				jobMap := make(map[string]bool) // To avoid duplicates
-				
-				// Re-open file to scan all messages
-				file.Seek(0, 0)
-				scanner := bufio.NewScanner(file)
-				// Increase buffer size for large JSON lines
-				const maxScanTokenSize = 1024 * 1024 // 1MB
-				buf := make([]byte, 0, 64*1024)
-				scanner.Buffer(buf, maxScanTokenSize)
-				lineIndex := 0
-				
-				for scanner.Scan() {
-					// Skip empty lines
-					if len(scanner.Bytes()) == 0 {
-						lineIndex++
-						continue
-					}
-					
-					// Try to parse the line
-					var msg struct {
-						Cwd       string    `json:"cwd"`
-						SessionID string    `json:"sessionId"`
-						Timestamp time.Time `json:"timestamp"`
-						Type      string    `json:"type"`
-						Message   struct {
-							Role    string `json:"role"`
-							Content string `json:"content"`
-						} `json:"message"`
-					}
-					
-					if err := json.Unmarshal(scanner.Bytes(), &msg); err == nil {
-						// Capture session info from first valid message
-						if !found && msg.Cwd != "" && msg.SessionID != "" && !msg.Timestamp.IsZero() {
-							info = msg
-							found = true
-						}
-						
-						// Look for plan/job info in user messages
-						if msg.Type == "user" && msg.Message.Role == "user" {
-							if plan, job := parsePlanInfo(msg.Message.Content); plan != "" && job != "" {
-								key := plan + ":" + job
-								if !jobMap[key] {
-									jobMap[key] = true
-									jobs = append(jobs, JobInfo{
-										Plan:      plan,
-										Job:       job,
-										LineIndex: lineIndex,
-									})
-								}
-							}
-						}
-					}
-					
-					lineIndex++
-					
-					// Limit scanning to first 100 lines for performance
-					if lineIndex > 100 {
-						break
-					}
+				found := false
+
+				if strings.Contains(logPath, "/.codex/") {
+					// Use Codex log parser
+					sessionID, cwd, startedAt, jobs, found = parseCodexLog(logPath)
+				} else {
+					// Use existing Claude log parser
+					sessionID, cwd, startedAt, jobs, found = parseClaudeLog(logPath)
 				}
-				file.Close()
 
 				if !found {
 					// Fallback for files where we can't find the info
@@ -249,16 +189,16 @@ func newListCmd() *cobra.Command {
 					continue
 				}
 
-				projectPath, projectName, worktree, ecosystem := parseProjectPath(info.Cwd)
+				projectPath, projectName, worktree, ecosystem := parseProjectPath(cwd)
 				sessions = append(sessions, SessionInfo{
-					SessionID:   info.SessionID,
+					SessionID:   sessionID,
 					ProjectName: projectName,
 					ProjectPath: projectPath,
 					Worktree:    worktree,
 					Ecosystem:   ecosystem,
 					Jobs:        jobs,
 					LogFilePath: logPath,
-					StartedAt:   info.Timestamp,
+					StartedAt:   startedAt,
 				})
 			}
 
@@ -458,13 +398,18 @@ func newReadCmd() *cobra.Command {
 				return fmt.Errorf("failed to get home directory: %w", err)
 			}
 			
-			projectsDir := filepath.Join(homeDir, ".claude", "projects")
-			pattern := filepath.Join(projectsDir, "*", "*.jsonl")
-			matches, err := filepath.Glob(pattern)
-			if err != nil {
-				return fmt.Errorf("failed to glob for transcripts: %w", err)
+			// Search both Claude and Codex log directories
+			claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
+			claudeMatches, _ := filepath.Glob(claudePattern)
+
+			codexPattern := filepath.Join(homeDir, ".codex", "sessions", "*", "*", "*", "*.jsonl")
+			codexMatches, _ := filepath.Glob(codexPattern)
+
+			matches := append(claudeMatches, codexMatches...)
+			if len(matches) == 0 {
+				return fmt.Errorf("no session transcripts found")
 			}
-			
+
 			// Find the job in sessions
 			type jobMatch struct {
 				sessionID   string
@@ -490,60 +435,22 @@ func newReadCmd() *cobra.Command {
 				}
 				
 				// Scan for jobs and session info
+				var cwd string
 				var jobs []JobInfo
-				var sessionInfo struct {
-					Cwd string `json:"cwd"`
-				}
-				hasSessionInfo := false
-				
-				scanner := bufio.NewScanner(file)
-				// Increase buffer size for large JSON lines
-				const maxScanTokenSize = 1024 * 1024 // 1MB
-				buf := make([]byte, 0, 64*1024)
-				scanner.Buffer(buf, maxScanTokenSize)
-				lineIndex := 0
-				
-				for scanner.Scan() {
-					if len(scanner.Bytes()) == 0 {
-						lineIndex++
-						continue
-					}
-					
-					var msg struct {
-						Cwd       string `json:"cwd"`
-						SessionID string `json:"sessionId"`
-						Type      string `json:"type"`
-						Message   struct {
-							Role    string `json:"role"`
-							Content string `json:"content"`
-						} `json:"message"`
-					}
-					
-					if err := json.Unmarshal(scanner.Bytes(), &msg); err == nil {
-						// Get session info
-						if !hasSessionInfo && msg.Cwd != "" {
-							sessionInfo.Cwd = msg.Cwd
-							hasSessionInfo = true
-						}
-						
-						// Look for jobs
-						if msg.Type == "user" && msg.Message.Role == "user" {
-							if plan, job := parsePlanInfo(msg.Message.Content); plan != "" && job != "" {
-								jobs = append(jobs, JobInfo{
-									Plan:      plan,
-									Job:       job,
-									LineIndex: lineIndex,
-								})
-							}
-						}
-					}
-					lineIndex++
+				var foundInfo bool
+
+				if strings.Contains(logPath, "/.codex/") {
+					// Use Codex log parser
+					_, cwd, _, jobs, foundInfo = parseCodexLog(logPath)
+				} else {
+					// Use Claude log parser
+					_, cwd, _, jobs, foundInfo = parseClaudeLog(logPath)
 				}
 				file.Close()
 				
 				// Apply project filter if specified
-				if projectFilter != "" && hasSessionInfo {
-					_, projectName, _, _ := parseProjectPath(sessionInfo.Cwd)
+				if projectFilter != "" && foundInfo {
+					_, projectName, _, _ := parseProjectPath(cwd)
 					if !strings.Contains(strings.ToLower(projectName), strings.ToLower(projectFilter)) {
 						continue
 					}
@@ -559,7 +466,7 @@ func newReadCmd() *cobra.Command {
 
 						// Extract session ID from the log
 						baseName := strings.TrimSuffix(filepath.Base(logPath), ".jsonl")
-						_, projectName, _, _ := parseProjectPath(sessionInfo.Cwd)
+						_, projectName, _, _ := parseProjectPath(cwd)
 						
 						found = append(found, jobMatch{
 							sessionID:   baseName,
@@ -623,85 +530,90 @@ func newReadCmd() *cobra.Command {
 				if inRange {
 					line := scanner.Bytes()
 					if len(line) > 0 {
-						// Try to parse as a transcript entry
-						var entry transcript.TranscriptEntry
-						if err := json.Unmarshal(line, &entry); err == nil {
-							// Extract message content if it's a user or assistant message
-							if (entry.Type == "user" || entry.Type == "assistant") && entry.Message != nil {
-								// Handle both string and array content formats
-								var textContent string
-								var toolUses []string
-								
-								// Try string content first (for user messages)
-								var stringContent string
-								if err := json.Unmarshal(entry.Message.Content, &stringContent); err == nil {
-									textContent = stringContent
-								} else {
-									// Try array content (for assistant messages)
-									var contentArray []json.RawMessage
-									if err := json.Unmarshal(entry.Message.Content, &contentArray); err == nil {
-										for _, rawContent := range contentArray {
-											var content struct {
-												Type  string          `json:"type"`
-												Text  string          `json:"text"`
-												Name  string          `json:"name"`
-												Input json.RawMessage `json:"input"`
-											}
-											if err := json.Unmarshal(rawContent, &content); err == nil {
-												if content.Type == "text" {
-													if textContent != "" {
-														textContent += "\n"
-													}
-													textContent += content.Text
-												} else if content.Type == "tool_use" {
-													// Extract tool name and key inputs
-													toolInfo := fmt.Sprintf("[Using %s", content.Name)
-													
-													// Try to extract common input fields
-													var inputs map[string]interface{}
-													if err := json.Unmarshal(content.Input, &inputs); err == nil {
-														// Show file paths, commands, or other key parameters
-														if filePath, ok := inputs["file_path"].(string); ok {
-															toolInfo += fmt.Sprintf(" on %s", filePath)
-														} else if command, ok := inputs["command"].(string); ok {
-															// Truncate long commands
-															if len(command) > 50 {
-																toolInfo += fmt.Sprintf(": %s...", command[:50])
-															} else {
-																toolInfo += fmt.Sprintf(": %s", command)
-															}
-														} else if pattern, ok := inputs["pattern"].(string); ok {
-															toolInfo += fmt.Sprintf(" for '%s'", pattern)
+						if strings.Contains(match.logPath, "/.codex/") {
+							// Parse and display Codex log line
+							displayCodexLogLine(line)
+						} else {
+							// Try to parse as a Claude transcript entry
+							var entry transcript.TranscriptEntry
+							if err := json.Unmarshal(line, &entry); err == nil {
+								// Extract message content if it's a user or assistant message
+								if (entry.Type == "user" || entry.Type == "assistant") && entry.Message != nil {
+									// Handle both string and array content formats
+									var textContent string
+									var toolUses []string
+
+									// Try string content first (for user messages)
+									var stringContent string
+									if err := json.Unmarshal(entry.Message.Content, &stringContent); err == nil {
+										textContent = stringContent
+									} else {
+										// Try array content (for assistant messages)
+										var contentArray []json.RawMessage
+										if err := json.Unmarshal(entry.Message.Content, &contentArray); err == nil {
+											for _, rawContent := range contentArray {
+												var content struct {
+													Type  string          `json:"type"`
+													Text  string          `json:"text"`
+													Name  string          `json:"name"`
+													Input json.RawMessage `json:"input"`
+												}
+												if err := json.Unmarshal(rawContent, &content); err == nil {
+													if content.Type == "text" {
+														if textContent != "" {
+															textContent += "\n"
 														}
+														textContent += content.Text
+													} else if content.Type == "tool_use" {
+														// Extract tool name and key inputs
+														toolInfo := fmt.Sprintf("[Using %s", content.Name)
+
+														// Try to extract common input fields
+														var inputs map[string]interface{}
+														if err := json.Unmarshal(content.Input, &inputs); err == nil {
+															// Show file paths, commands, or other key parameters
+															if filePath, ok := inputs["file_path"].(string); ok {
+																toolInfo += fmt.Sprintf(" on %s", filePath)
+															} else if command, ok := inputs["command"].(string); ok {
+																// Truncate long commands
+																if len(command) > 50 {
+																	toolInfo += fmt.Sprintf(": %s...", command[:50])
+																} else {
+																	toolInfo += fmt.Sprintf(": %s", command)
+																}
+															} else if pattern, ok := inputs["pattern"].(string); ok {
+																toolInfo += fmt.Sprintf(" for '%s'", pattern)
+															}
+														}
+														toolInfo += "]"
+														toolUses = append(toolUses, toolInfo)
 													}
-													toolInfo += "]"
-													toolUses = append(toolUses, toolInfo)
 												}
 											}
 										}
 									}
-								}
-								
-								// Display tool uses if any
-								if len(toolUses) > 0 {
-									role := "Agent"
-									for _, toolUse := range toolUses {
-										fmt.Printf("%s: %s\n", role, toolUse)
+
+									// Display tool uses if any
+									if len(toolUses) > 0 {
+										role := "Agent"
+										for _, toolUse := range toolUses {
+											fmt.Printf("%s: %s\n", role, toolUse)
+										}
+										if textContent != "" {
+											fmt.Println() // Add space between tools and text
+										}
 									}
+
+									// Display text content
 									if textContent != "" {
-										fmt.Println() // Add space between tools and text
+										role := entry.Type
+										if role == "assistant" {
+											role = "Agent"
+										} else if role == "user" {
+											role = "User"
+										}
+										fmt.Printf("%s: %s\n\n", role, textContent)
 									}
-								}
-								
-								// Display text content
-								if textContent != "" {
-									role := entry.Type
-									if role == "assistant" {
-										role = "Agent"
-									} else if role == "user" {
-										role = "User"
-									}
-									fmt.Printf("%s: %s\n\n", role, textContent)
 								}
 							}
 						}
@@ -723,6 +635,194 @@ func newReadCmd() *cobra.Command {
 	
 	cmd.Flags().StringP("session", "s", "", "Specify session ID (required if multiple matches)")
 	cmd.Flags().StringP("project", "p", "", "Filter by project name")
-	
+
 	return cmd
+}
+
+// Helper functions for parsing different log formats
+
+func parseClaudeLog(logPath string) (sessionID, cwd string, startedAt time.Time, jobs []JobInfo, found bool) {
+	file, err := os.Open(logPath)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	jobMap := make(map[string]bool)
+	scanner := bufio.NewScanner(file)
+	const maxScanTokenSize = 1024 * 1024 // 1MB
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxScanTokenSize)
+	lineIndex := 0
+
+	for scanner.Scan() {
+		if len(scanner.Bytes()) == 0 {
+			lineIndex++
+			continue
+		}
+
+		var msg struct {
+			Cwd       string    `json:"cwd"`
+			SessionID string    `json:"sessionId"`
+			Timestamp time.Time `json:"timestamp"`
+			Type      string    `json:"type"`
+			Message   struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+		}
+
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err == nil {
+			if !found && msg.Cwd != "" && msg.SessionID != "" && !msg.Timestamp.IsZero() {
+				sessionID = msg.SessionID
+				cwd = msg.Cwd
+				startedAt = msg.Timestamp
+				found = true
+			}
+
+			if msg.Type == "user" && msg.Message.Role == "user" {
+				if plan, job := parsePlanInfo(msg.Message.Content); plan != "" && job != "" {
+					key := plan + ":" + job
+					if !jobMap[key] {
+						jobMap[key] = true
+						jobs = append(jobs, JobInfo{Plan: plan, Job: job, LineIndex: lineIndex})
+					}
+				}
+			}
+		}
+		lineIndex++
+		if lineIndex > 100 { // Performance limit
+			break
+		}
+	}
+	return
+}
+
+func parseCodexLog(logPath string) (sessionID, cwd string, startedAt time.Time, jobs []JobInfo, found bool) {
+	file, err := os.Open(logPath)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	jobMap := make(map[string]bool)
+	scanner := bufio.NewScanner(file)
+	const maxScanTokenSize = 1024 * 1024 // 1MB
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxScanTokenSize)
+	lineIndex := 0
+
+	for scanner.Scan() {
+		if len(scanner.Bytes()) == 0 {
+			lineIndex++
+			continue
+		}
+
+		var entry map[string]interface{}
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			lineIndex++
+			continue
+		}
+
+		if entry["type"] == "session_meta" {
+			if payload, ok := entry["payload"].(map[string]interface{}); ok {
+				if id, ok := payload["id"].(string); ok {
+					sessionID = id
+				}
+				if ts, ok := payload["timestamp"].(string); ok {
+					startedAt, _ = time.Parse(time.RFC3339Nano, ts)
+				}
+			}
+		}
+
+		if entry["type"] == "response_item" {
+			if payload, ok := entry["payload"].(map[string]interface{}); ok {
+				if ptype, ok := payload["type"].(string); ok && ptype == "message" && payload["role"] == "user" {
+					if content, ok := payload["content"].([]interface{}); ok {
+						for _, c := range content {
+							if cMap, ok := c.(map[string]interface{}); ok && cMap["type"] == "input_text" {
+								if text, ok := cMap["text"].(string); ok {
+									if strings.Contains(text, "<environment_context>") {
+										re := regexp.MustCompile(`<cwd>(.*)</cwd>`)
+										matches := re.FindStringSubmatch(text)
+										if len(matches) > 1 {
+											cwd = matches[1]
+										}
+									} else {
+										if plan, job := parsePlanInfo(text); plan != "" && job != "" {
+											key := plan + ":" + job
+											if !jobMap[key] {
+												jobMap[key] = true
+												jobs = append(jobs, JobInfo{Plan: plan, Job: job, LineIndex: lineIndex})
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if sessionID != "" && cwd != "" {
+			found = true
+		}
+
+		lineIndex++
+		if lineIndex > 100 { // Performance limit
+			break
+		}
+	}
+	return
+}
+
+func displayCodexLogLine(line []byte) {
+	var entry map[string]interface{}
+	if err := json.Unmarshal(line, &entry); err != nil {
+		return // Skip lines that aren't valid JSON
+	}
+
+	payload, ok := entry["payload"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	entryType, _ := payload["type"].(string)
+
+	switch entryType {
+	case "message":
+		role, _ := payload["role"].(string)
+		contentList, _ := payload["content"].([]interface{})
+		var textContent string
+		for _, c := range contentList {
+			if cMap, ok := c.(map[string]interface{}); ok {
+				if cType, ok := cMap["type"].(string); ok && cType == "input_text" {
+					if text, ok := cMap["text"].(string); ok {
+						textContent += text
+					}
+				}
+			}
+		}
+		if textContent != "" && !strings.Contains(textContent, "<environment_context>") {
+			roleDisplay := "User"
+			if role == "assistant" {
+				roleDisplay = "Agent"
+			}
+			fmt.Printf("%s: %s\n\n", roleDisplay, textContent)
+		}
+	case "agent_message":
+		if message, ok := payload["message"].(string); ok {
+			fmt.Printf("Agent: %s\n\n", message)
+		}
+	case "agent_reasoning":
+		if text, ok := payload["text"].(string); ok {
+			fmt.Printf("[Reasoning: %s]\n\n", text)
+		}
+	case "tool_code":
+		if code, ok := payload["code"].(string); ok {
+			lang, _ := payload["language"].(string)
+			fmt.Printf("[Tool (%s)]:\n%s\n\n", lang, code)
+		}
+	}
 }
