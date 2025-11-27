@@ -419,6 +419,7 @@ func newReadCmd() *cobra.Command {
 				projectName string
 				cwd         string
 				jobs        []JobInfo
+				startedAt   time.Time
 			}
 
 			logsBySession := make(map[string][]logFileInfo)
@@ -439,13 +440,14 @@ func newReadCmd() *cobra.Command {
 
 				// Scan for jobs and session info
 				var actualSessionID, cwd string
+				var startedAt time.Time
 				var jobs []JobInfo
 				var foundInfo bool
 
 				if strings.Contains(logPath, "/.codex/") {
-					actualSessionID, cwd, _, jobs, foundInfo = parseCodexLog(logPath)
+					actualSessionID, cwd, startedAt, jobs, foundInfo = parseCodexLog(logPath)
 				} else {
-					actualSessionID, cwd, _, jobs, foundInfo = parseClaudeLog(logPath)
+					actualSessionID, cwd, startedAt, jobs, foundInfo = parseClaudeLog(logPath)
 				}
 				file.Close()
 
@@ -469,6 +471,14 @@ func newReadCmd() *cobra.Command {
 					projectName: projectName,
 					cwd:         cwd,
 					jobs:        jobs,
+					startedAt:   startedAt,
+				})
+			}
+
+			// Sort log files within each session by start time (chronological order)
+			for sid := range logsBySession {
+				sort.Slice(logsBySession[sid], func(i, j int) bool {
+					return logsBySession[sid][i].startedAt.Before(logsBySession[sid][j].startedAt)
 				})
 			}
 
