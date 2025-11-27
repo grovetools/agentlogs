@@ -88,10 +88,10 @@ func FormatWriteTool(input json.RawMessage, maxLines int, detailLevel string) st
 		}
 
 		for i := 0; i < linesToShow; i++ {
-			output.WriteString(redStyle.Render("  - ") + oldLines[i] + "\n")
+			output.WriteString(redStyle.Render(fmt.Sprintf("  - %s", oldLines[i])) + "\n")
 		}
 		if len(oldLines) > linesToShow {
-			output.WriteString(redStyle.Render(fmt.Sprintf("  - ... (%d more lines removed)\n", len(oldLines)-linesToShow)))
+			output.WriteString(redStyle.Render(fmt.Sprintf("  - ... (%d more lines removed)", len(oldLines)-linesToShow)) + "\n")
 		}
 
 		// Show added content
@@ -101,10 +101,10 @@ func FormatWriteTool(input json.RawMessage, maxLines int, detailLevel string) st
 		}
 
 		for i := 0; i < linesToShow; i++ {
-			output.WriteString(greenStyle.Render("  + ") + newLines[i] + "\n")
+			output.WriteString(greenStyle.Render(fmt.Sprintf("  + %s", newLines[i])) + "\n")
 		}
 		if len(newLines) > linesToShow {
-			output.WriteString(greenStyle.Render(fmt.Sprintf("  + ... (%d more lines added)\n", len(newLines)-linesToShow)))
+			output.WriteString(greenStyle.Render(fmt.Sprintf("  + ... (%d more lines added)", len(newLines)-linesToShow)) + "\n")
 		}
 	} else if data.Content != "" {
 		// This is a Write operation - just show we're writing to the file
