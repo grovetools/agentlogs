@@ -23,7 +23,7 @@ LDFLAGS = -ldflags="\
 -X '$(VERSION_PKG).Branch=$(GIT_BRANCH)' \
 -X '$(VERSION_PKG).BuildDate=$(BUILD_DATE)'"
 
-.PHONY: all build test clean fmt vet lint run check dev build-all generate-docs help
+.PHONY: all build test clean fmt vet lint run check dev build-all generate generate-docs help
 
 all: build
 
@@ -73,6 +73,11 @@ dev:
 	@echo "Building $(BINARY_NAME) with race detector..."
 	@go build -race $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME) .
 
+# Generate schemas and other generated code
+generate:
+	@echo "Generating code..."
+	@go generate ./...
+
 # Generate documentation
 generate-docs:
 	@echo "Generating documentation..."
@@ -113,6 +118,7 @@ help:
 	@echo "  make run ARGS=.. - Run the CLI with arguments"
 	@echo "  make check       - Run all checks"
 	@echo "  make dev         - Build with race detector"
+	@echo "  make generate    - Run go generate"
 	@echo "  make build-all   - Build for multiple platforms"
 	@echo "  make generate-docs     - Generate documentation using docgen"
 	@echo "  make test-e2e ARGS=...- Run E2E test runner binary"

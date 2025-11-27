@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mattsolo1/grove-agent-logs/config/config",
+  "$defs": {
+    "TranscriptConfig": {
+      "properties": {
+        "detail_level": {
+          "type": "string"
+        },
+        "max_diff_lines": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "properties": {
+    "transcript": {
+      "$ref": "#/$defs/TranscriptConfig"
+    }
+  },
+  "type": "object",
+  "title": "Grove Agent Logs (aglogs) Configuration",
+  "description": "Schema for the 'aglogs' extension in grove.yml."
+}

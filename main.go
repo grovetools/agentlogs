@@ -12,9 +12,13 @@ import (
 	"text/tabwriter"
 	"time"
 
+	aglogs_config "github.com/mattsolo1/grove-agent-logs/config"
 	"github.com/mattsolo1/grove-agent-logs/cmd"
+	"github.com/mattsolo1/grove-agent-logs/internal/display"
+	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
 	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 	"github.com/mattsolo1/grove-core/cli"
+	core_config "github.com/mattsolo1/grove-core/config"
 	"github.com/mattsolo1/grove-core/pkg/sessions"
 	"github.com/mattsolo1/grove-core/pkg/workspace"
 	"github.com/spf13/cobra"
@@ -393,7 +397,35 @@ func newReadCmd() *cobra.Command {
 			// Get session ID and project filter if specified
 			sessionID, _ := cmd.Flags().GetString("session")
 			projectFilter, _ := cmd.Flags().GetString("project")
-			
+			detailFlag, _ := cmd.Flags().GetString("detail")
+
+			// Load configuration to determine detail level and other settings
+			var detailLevel string
+			var maxDiffLines int
+			coreCfg, err := core_config.LoadDefault()
+			if err == nil {
+				var aglogsCfg aglogs_config.Config
+				if err := coreCfg.UnmarshalExtension("aglogs", &aglogsCfg); err == nil {
+					detailLevel = aglogsCfg.Transcript.DetailLevel
+					maxDiffLines = aglogsCfg.Transcript.MaxDiffLines
+				}
+			}
+
+			// Flag overrides config
+			if detailFlag != "" {
+				detailLevel = detailFlag
+			} else if detailLevel == "" {
+				detailLevel = "summary" // Default
+			}
+
+			// Define specialized formatters for common tools (with config access)
+			toolFormatters := map[string]formatters.ToolFormatter{
+				"Write":     formatters.MakeWriteFormatter(maxDiffLines),
+				"Edit":      formatters.MakeWriteFormatter(maxDiffLines),
+				"Read":      formatters.FormatReadTool,
+				"TodoWrite": formatters.FormatTodoWriteTool,
+			}
+
 			// Find matching sessions
 			homeDir, err := os.UserHomeDir()
 			if err != nil {
@@ -614,86 +646,9 @@ func newReadCmd() *cobra.Command {
 								displayCodexLogLine(line)
 							} else {
 								// Try to parse as a Claude transcript entry
-								var entry transcript.TranscriptEntry
+								var entry display.TranscriptEntry
 								if err := json.Unmarshal(line, &entry); err == nil {
-									// Extract message content if it's a user or assistant message
-									if (entry.Type == "user" || entry.Type == "assistant") && entry.Message != nil {
-										// Handle both string and array content formats
-										var textContent string
-										var toolUses []string
-
-										// Try string content first (for user messages)
-										var stringContent string
-										if err := json.Unmarshal(entry.Message.Content, &stringContent); err == nil {
-											textContent = stringContent
-										} else {
-											// Try array content (for assistant messages)
-											var contentArray []json.RawMessage
-											if err := json.Unmarshal(entry.Message.Content, &contentArray); err == nil {
-												for _, rawContent := range contentArray {
-													var content struct {
-														Type  string          `json:"type"`
-														Text  string          `json:"text"`
-														Name  string          `json:"name"`
-														Input json.RawMessage `json:"input"`
-													}
-													if err := json.Unmarshal(rawContent, &content); err == nil {
-														if content.Type == "text" {
-															if textContent != "" {
-																textContent += "\n"
-															}
-															textContent += content.Text
-														} else if content.Type == "tool_use" {
-															// Extract tool name and key inputs
-															toolInfo := fmt.Sprintf("[Using %s", content.Name)
-
-															// Try to extract common input fields
-															var inputs map[string]interface{}
-															if err := json.Unmarshal(content.Input, &inputs); err == nil {
-																// Show file paths, commands, or other key parameters
-																if filePath, ok := inputs["file_path"].(string); ok {
-																	toolInfo += fmt.Sprintf(" on %s", filePath)
-																} else if command, ok := inputs["command"].(string); ok {
-																	// Truncate long commands
-																	if len(command) > 50 {
-																		toolInfo += fmt.Sprintf(": %s...", command[:50])
-																	} else {
-																		toolInfo += fmt.Sprintf(": %s", command)
-																	}
-																} else if pattern, ok := inputs["pattern"].(string); ok {
-																	toolInfo += fmt.Sprintf(" for '%s'", pattern)
-																}
-															}
-															toolInfo += "]"
-															toolUses = append(toolUses, toolInfo)
-														}
-													}
-												}
-											}
-										}
-
-										// Display tool uses if any
-										if len(toolUses) > 0 {
-											role := "Agent"
-											for _, toolUse := range toolUses {
-												fmt.Printf("%s: %s\n", role, toolUse)
-											}
-											if textContent != "" {
-												fmt.Println() // Add space between tools and text
-											}
-										}
-
-										// Display text content
-										if textContent != "" {
-											role := entry.Type
-											if role == "assistant" {
-												role = "Agent"
-											} else if role == "user" {
-												role = "User"
-											}
-											fmt.Printf("%s: %s\n\n", role, textContent)
-										}
-									}
+									display.DisplayTranscriptEntry(entry, detailLevel, toolFormatters)
 								}
 							}
 						}
@@ -717,6 +672,7 @@ func newReadCmd() *cobra.Command {
 	
 	cmd.Flags().StringP("session", "s", "", "Specify session ID (required if multiple matches)")
 	cmd.Flags().StringP("project", "p", "", "Filter by project name")
+	cmd.Flags().String("detail", "", "Set detail level for output ('summary' or 'full'). Overrides config.")
 
 	return cmd
 }
