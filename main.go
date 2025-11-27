@@ -15,6 +15,7 @@ import (
 	"github.com/mattsolo1/grove-agent-logs/cmd"
 	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 	"github.com/mattsolo1/grove-core/cli"
+	"github.com/mattsolo1/grove-core/pkg/sessions"
 	"github.com/mattsolo1/grove-core/pkg/workspace"
 	"github.com/spf13/cobra"
 )
@@ -122,6 +123,7 @@ func main() {
 	rootCmd.AddCommand(newTailCmd())
 	rootCmd.AddCommand(newQueryCmd())
 	rootCmd.AddCommand(newReadCmd())
+	rootCmd.AddCommand(newGetSessionInfoCmd())
 	rootCmd.AddCommand(cmd.NewVersionCmd())
 	
 	if err := rootCmd.Execute(); err != nil {
@@ -410,7 +412,67 @@ func newReadCmd() *cobra.Command {
 				return fmt.Errorf("no session transcripts found")
 			}
 
-			// Find the job in sessions
+			// First, group all log files by their actual session ID
+			type logFileInfo struct {
+				logPath     string
+				sessionID   string
+				projectName string
+				cwd         string
+				jobs        []JobInfo
+			}
+
+			logsBySession := make(map[string][]logFileInfo)
+
+			for _, logPath := range matches {
+				// If session ID is specified, filter by filename
+				if sessionID != "" {
+					baseName := strings.TrimSuffix(filepath.Base(logPath), ".jsonl")
+					if !strings.Contains(baseName, sessionID) {
+						continue
+					}
+				}
+
+				file, err := os.Open(logPath)
+				if err != nil {
+					continue
+				}
+
+				// Scan for jobs and session info
+				var actualSessionID, cwd string
+				var jobs []JobInfo
+				var foundInfo bool
+
+				if strings.Contains(logPath, "/.codex/") {
+					actualSessionID, cwd, _, jobs, foundInfo = parseCodexLog(logPath)
+				} else {
+					actualSessionID, cwd, _, jobs, foundInfo = parseClaudeLog(logPath)
+				}
+				file.Close()
+
+				if !foundInfo {
+					continue
+				}
+
+				// Apply project filter if specified
+				if projectFilter != "" {
+					_, projectName, _, _ := parseProjectPath(cwd)
+					if !strings.Contains(strings.ToLower(projectName), strings.ToLower(projectFilter)) {
+						continue
+					}
+				}
+
+				_, projectName, _, _ := parseProjectPath(cwd)
+
+				logsBySession[actualSessionID] = append(logsBySession[actualSessionID], logFileInfo{
+					logPath:     logPath,
+					sessionID:   actualSessionID,
+					projectName: projectName,
+					cwd:         cwd,
+					jobs:        jobs,
+				})
+			}
+
+			// Now find which sessions contain the job we're looking for
 			type jobMatch struct {
 				sessionID   string
 				projectName string
@@ -419,212 +481,222 @@ func newReadCmd() *cobra.Command {
 				nextJobLine int
 			}
 			var found []jobMatch
-			
-			for _, logPath := range matches {
-				// If session ID is specified, filter by it
-				if sessionID != "" {
-					baseName := strings.TrimSuffix(filepath.Base(logPath), ".jsonl")
-					if !strings.Contains(baseName, sessionID) {
-						continue
-					}
-				}
-				
-				file, err := os.Open(logPath)
-				if err != nil {
-					continue
-				}
-				
-				// Scan for jobs and session info
-				var cwd string
-				var jobs []JobInfo
-				var foundInfo bool
 
-				if strings.Contains(logPath, "/.codex/") {
-					// Use Codex log parser
-					_, cwd, _, jobs, foundInfo = parseCodexLog(logPath)
-				} else {
-					// Use Claude log parser
-					_, cwd, _, jobs, foundInfo = parseClaudeLog(logPath)
-				}
-				file.Close()
-				
-				// Apply project filter if specified
-				if projectFilter != "" && foundInfo {
-					_, projectName, _, _ := parseProjectPath(cwd)
-					if !strings.Contains(strings.ToLower(projectName), strings.ToLower(projectFilter)) {
-						continue
-					}
-				}
+			for sid, logFiles := range logsBySession {
+				// Check all log files in this session for the job
+				for _, logFile := range logFiles {
+					for i, job := range logFile.jobs {
+						if job.Plan == planName && job.Job == jobName {
+							nextLine := -1
+							if i+1 < len(logFile.jobs) {
+								nextLine = logFile.jobs[i+1].LineIndex
+							}
 
-				// Check if this session has the job we're looking for
-				for i, job := range jobs {
-					if job.Plan == planName && job.Job == jobName {
-						nextLine := -1
-						if i+1 < len(jobs) {
-							nextLine = jobs[i+1].LineIndex
+							// Add this log file AND all other log files from the same session
+							for _, sessionLogFile := range logFiles {
+								found = append(found, jobMatch{
+									sessionID:   sid,
+									projectName: sessionLogFile.projectName,
+									logPath:     sessionLogFile.logPath,
+									job:         job,
+									nextJobLine: nextLine,
+								})
+							}
+							goto nextSession // Found the job in this session, move to next session
 						}
-
-						// Extract session ID from the log
-						baseName := strings.TrimSuffix(filepath.Base(logPath), ".jsonl")
-						_, projectName, _, _ := parseProjectPath(cwd)
-						
-						found = append(found, jobMatch{
-							sessionID:   baseName,
-							projectName: projectName,
-							logPath:     logPath,
-							job:         job,
-							nextJobLine: nextLine,
-						})
 					}
 				}
+			nextSession:
 			}
-			
+
 			if len(found) == 0 {
 				return fmt.Errorf("no sessions found with job %s", jobSpec)
 			}
-			
-			// If multiple matches and no session specified, show options
-			if len(found) > 1 && sessionID == "" {
+
+			// Group matches by session ID
+			sessionGroups := make(map[string][]jobMatch)
+			for _, match := range found {
+				sessionGroups[match.sessionID] = append(sessionGroups[match.sessionID], match)
+			}
+
+			// If multiple DIFFERENT sessions and no session specified, show options
+			if len(sessionGroups) > 1 && sessionID == "" {
 				fmt.Printf("Multiple sessions found with job %s:\n\n", jobSpec)
-				for _, match := range found {
+				for sid, matches := range sessionGroups {
+					match := matches[0] // Use first match for display
 					fmt.Printf("  Project: %s\n", match.projectName)
-					fmt.Printf("  Session: %s (line %d)\n\n", match.sessionID, match.job.LineIndex)
+					fmt.Printf("  Session: %s (%d log file(s))\n\n", sid, len(matches))
 				}
 				fmt.Println("Please specify a session with --session or filter by project with --project")
 				return nil
 			}
-			
-			// Use the first (or only) match
-			match := found[0]
-			
-			// Read and display the job logs
-			file, err := os.Open(match.logPath)
-			if err != nil {
-				return fmt.Errorf("failed to open log file: %w", err)
+
+			// Get the session group to use (first if only one, or matched by session ID)
+			var matchesToUse []jobMatch
+			if len(sessionGroups) == 1 {
+				for _, matches := range sessionGroups {
+					matchesToUse = matches
+					break
+				}
+			} else {
+				// Find by session ID
+				for sid, matches := range sessionGroups {
+					if strings.Contains(sid, sessionID) {
+						matchesToUse = matches
+						break
+					}
+				}
 			}
-			defer file.Close()
-			
-			scanner := bufio.NewScanner(file)
-			// Increase buffer size for large JSON lines (matching parser.go)
-			const maxScanTokenSize = 1024 * 1024 // 1MB
-			buf := make([]byte, 0, 64*1024)
-			scanner.Buffer(buf, maxScanTokenSize)
-			
-			lineIndex := 0
-			inRange := false
-			
+
+			if len(matchesToUse) == 0 {
+				return fmt.Errorf("no matching session found")
+			}
+
+			// Use the first match for metadata
+			match := matchesToUse[0]
+
 			fmt.Printf("=== Job: %s/%s ===\n", match.job.Plan, match.job.Job)
 			fmt.Printf("Project: %s\n", match.projectName)
 			fmt.Printf("Session: %s\n", match.sessionID)
+			if len(matchesToUse) > 1 {
+				fmt.Printf("Log files: %d (resumed session)\n", len(matchesToUse))
+			}
 			fmt.Printf("Starting at line: %d\n\n", match.job.LineIndex)
-			
-			for scanner.Scan() {
-				if lineIndex == match.job.LineIndex {
-					inRange = true
-				}
-				
-				if match.nextJobLine != -1 && lineIndex >= match.nextJobLine {
-					break
-				}
-				
-				if inRange {
-					line := scanner.Bytes()
-					if len(line) > 0 {
-						if strings.Contains(match.logPath, "/.codex/") {
-							// Parse and display Codex log line
-							displayCodexLogLine(line)
-						} else {
-							// Try to parse as a Claude transcript entry
-							var entry transcript.TranscriptEntry
-							if err := json.Unmarshal(line, &entry); err == nil {
-								// Extract message content if it's a user or assistant message
-								if (entry.Type == "user" || entry.Type == "assistant") && entry.Message != nil {
-									// Handle both string and array content formats
-									var textContent string
-									var toolUses []string
 
-									// Try string content first (for user messages)
-									var stringContent string
-									if err := json.Unmarshal(entry.Message.Content, &stringContent); err == nil {
-										textContent = stringContent
-									} else {
-										// Try array content (for assistant messages)
-										var contentArray []json.RawMessage
-										if err := json.Unmarshal(entry.Message.Content, &contentArray); err == nil {
-											for _, rawContent := range contentArray {
-												var content struct {
-													Type  string          `json:"type"`
-													Text  string          `json:"text"`
-													Name  string          `json:"name"`
-													Input json.RawMessage `json:"input"`
-												}
-												if err := json.Unmarshal(rawContent, &content); err == nil {
-													if content.Type == "text" {
-														if textContent != "" {
-															textContent += "\n"
-														}
-														textContent += content.Text
-													} else if content.Type == "tool_use" {
-														// Extract tool name and key inputs
-														toolInfo := fmt.Sprintf("[Using %s", content.Name)
+			// Read and display logs from ALL matches (handles resumed sessions with multiple log files)
+			for matchIdx, currentMatch := range matchesToUse {
+				file, err := os.Open(currentMatch.logPath)
+				if err != nil {
+					continue // Skip files we can't open
+				}
+				defer file.Close()
 
-														// Try to extract common input fields
-														var inputs map[string]interface{}
-														if err := json.Unmarshal(content.Input, &inputs); err == nil {
-															// Show file paths, commands, or other key parameters
-															if filePath, ok := inputs["file_path"].(string); ok {
-																toolInfo += fmt.Sprintf(" on %s", filePath)
-															} else if command, ok := inputs["command"].(string); ok {
-																// Truncate long commands
-																if len(command) > 50 {
-																	toolInfo += fmt.Sprintf(": %s...", command[:50])
-																} else {
-																	toolInfo += fmt.Sprintf(": %s", command)
-																}
-															} else if pattern, ok := inputs["pattern"].(string); ok {
-																toolInfo += fmt.Sprintf(" for '%s'", pattern)
+				scanner := bufio.NewScanner(file)
+				// Increase buffer size for large JSON lines (matching parser.go)
+				const maxScanTokenSize = 1024 * 1024 // 1MB
+				buf := make([]byte, 0, 64*1024)
+				scanner.Buffer(buf, maxScanTokenSize)
+
+				lineIndex := 0
+				inRange := false
+
+				// For the first log file, start from the job's line index
+				// For subsequent log files (resumed sessions), start from the beginning
+				startLine := 0
+				if matchIdx == 0 {
+					startLine = currentMatch.job.LineIndex
+				}
+
+				for scanner.Scan() {
+					if lineIndex == startLine {
+						inRange = true
+					}
+
+					if currentMatch.nextJobLine != -1 && lineIndex >= currentMatch.nextJobLine {
+						break
+					}
+
+					if inRange {
+						line := scanner.Bytes()
+						if len(line) > 0 {
+							if strings.Contains(currentMatch.logPath, "/.codex/") {
+								// Parse and display Codex log line
+								displayCodexLogLine(line)
+							} else {
+								// Try to parse as a Claude transcript entry
+								var entry transcript.TranscriptEntry
+								if err := json.Unmarshal(line, &entry); err == nil {
+									// Extract message content if it's a user or assistant message
+									if (entry.Type == "user" || entry.Type == "assistant") && entry.Message != nil {
+										// Handle both string and array content formats
+										var textContent string
+										var toolUses []string
+
+										// Try string content first (for user messages)
+										var stringContent string
+										if err := json.Unmarshal(entry.Message.Content, &stringContent); err == nil {
+											textContent = stringContent
+										} else {
+											// Try array content (for assistant messages)
+											var contentArray []json.RawMessage
+											if err := json.Unmarshal(entry.Message.Content, &contentArray); err == nil {
+												for _, rawContent := range contentArray {
+													var content struct {
+														Type  string          `json:"type"`
+														Text  string          `json:"text"`
+														Name  string          `json:"name"`
+														Input json.RawMessage `json:"input"`
+													}
+													if err := json.Unmarshal(rawContent, &content); err == nil {
+														if content.Type == "text" {
+															if textContent != "" {
+																textContent += "\n"
 															}
+															textContent += content.Text
+														} else if content.Type == "tool_use" {
+															// Extract tool name and key inputs
+															toolInfo := fmt.Sprintf("[Using %s", content.Name)
+
+															// Try to extract common input fields
+															var inputs map[string]interface{}
+															if err := json.Unmarshal(content.Input, &inputs); err == nil {
+																// Show file paths, commands, or other key parameters
+																if filePath, ok := inputs["file_path"].(string); ok {
+																	toolInfo += fmt.Sprintf(" on %s", filePath)
+																} else if command, ok := inputs["command"].(string); ok {
+																	// Truncate long commands
+																	if len(command) > 50 {
+																		toolInfo += fmt.Sprintf(": %s...", command[:50])
+																	} else {
+																		toolInfo += fmt.Sprintf(": %s", command)
+																	}
+																} else if pattern, ok := inputs["pattern"].(string); ok {
+																	toolInfo += fmt.Sprintf(" for '%s'", pattern)
+																}
+															}
+															toolInfo += "]"
+															toolUses = append(toolUses, toolInfo)
 														}
-														toolInfo += "]"
-														toolUses = append(toolUses, toolInfo)
 													}
 												}
 											}
 										}
-									}
 
-									// Display tool uses if any
-									if len(toolUses) > 0 {
-										role := "Agent"
-										for _, toolUse := range toolUses {
-											fmt.Printf("%s: %s\n", role, toolUse)
+										// Display tool uses if any
+										if len(toolUses) > 0 {
+											role := "Agent"
+											for _, toolUse := range toolUses {
+												fmt.Printf("%s: %s\n", role, toolUse)
+											}
+											if textContent != "" {
+												fmt.Println() // Add space between tools and text
+											}
 										}
+
+										// Display text content
 										if textContent != "" {
-											fmt.Println() // Add space between tools and text
+											role := entry.Type
+											if role == "assistant" {
+												role = "Agent"
+											} else if role == "user" {
+												role = "User"
+											}
+											fmt.Printf("%s: %s\n\n", role, textContent)
 										}
-									}
-
-									// Display text content
-									if textContent != "" {
-										role := entry.Type
-										if role == "assistant" {
-											role = "Agent"
-										} else if role == "user" {
-											role = "User"
-										}
-										fmt.Printf("%s: %s\n\n", role, textContent)
 									}
 								}
 							}
 						}
 					}
+
+					lineIndex++
 				}
-				
-				lineIndex++
 			}
-			
-			if match.nextJobLine != -1 {
-				fmt.Printf("\n=== Next job starts at line %d ===\n", match.nextJobLine)
+
+			// Show end marker after processing all log files
+			lastMatch := matchesToUse[len(matchesToUse)-1]
+			if lastMatch.nextJobLine != -1 {
+				fmt.Printf("\n=== Next job starts at line %d ===\n", lastMatch.nextJobLine)
 			} else {
 				fmt.Println("\n=== End of session ===")
 			}
@@ -636,6 +708,121 @@ func newReadCmd() *cobra.Command {
 	cmd.Flags().StringP("session", "s", "", "Specify session ID (required if multiple matches)")
 	cmd.Flags().StringP("project", "p", "", "Filter by project name")
 
+	return cmd
+}
+
+func newGetSessionInfoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:    "get-session-info <job-file>",
+		Short:  "Get session details for a given job file",
+		Long:   "Retrieves the native agent session ID and provider for a given Grove job file path from the sessions database or transcript logs.",
+		Hidden: true, // Internal command for now
+		Args:   cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			jobFilePath := args[0]
+
+			// Extract plan name and job filename from the path
+			// Path format: /path/to/plans/PLANNAME/NN-jobname.md
+			parts := strings.Split(jobFilePath, string(filepath.Separator))
+			if len(parts) < 2 {
+				return fmt.Errorf("invalid job file path format: %s", jobFilePath)
+			}
+			jobFilename := parts[len(parts)-1]
+			planName := parts[len(parts)-2]
+
+			var agentSessionID, provider string
+
+			// First, try the fast path: check the session registry by reading the job file's frontmatter
+			// to get the job ID, then look up in registry
+			if content, err := os.ReadFile(jobFilePath); err == nil {
+				// Extract job ID from frontmatter (simple regex for "id: <value>")
+				idRegex := regexp.MustCompile(`(?m)^id:\s*(.+)$`)
+				if matches := idRegex.FindStringSubmatch(string(content)); len(matches) > 1 {
+					jobID := strings.TrimSpace(matches[1])
+
+					registry, err := sessions.NewFileSystemRegistry()
+					if err == nil {
+						session, err := registry.Find(jobID)
+						if err == nil && session.ClaudeSessionID != "" {
+							agentSessionID = session.ClaudeSessionID
+							provider = session.Provider
+						}
+					}
+				}
+			}
+
+			// Fallback: search transcript logs if not found in registry
+			if agentSessionID == "" {
+				homeDir, err := os.UserHomeDir()
+				if err != nil {
+					return fmt.Errorf("failed to get home directory: %w", err)
+				}
+
+				// Search both Claude and Codex log directories
+				claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
+				claudeMatches, _ := filepath.Glob(claudePattern)
+
+				codexPattern := filepath.Join(homeDir, ".codex", "sessions", "*", "*", "*", "*.jsonl")
+				codexMatches, _ := filepath.Glob(codexPattern)
+
+				matches := append(claudeMatches, codexMatches...)
+
+				// Search through transcripts for the plan/job combination
+				for _, logPath := range matches {
+					var sessionID string
+					var jobs []JobInfo
+					var found bool
+
+					if strings.Contains(logPath, "/.codex/") {
+						sessionID, _, _, jobs, found = parseCodexLog(logPath)
+						if !found {
+							continue
+						}
+						provider = "codex"
+					} else {
+						sessionID, _, _, jobs, found = parseClaudeLog(logPath)
+						if !found {
+							continue
+						}
+						provider = "claude"
+					}
+
+					// Check if any job in this session matches the plan/job filename
+					for _, job := range jobs {
+						if job.Plan == planName && job.Job == jobFilename {
+							agentSessionID = sessionID
+							break
+						}
+					}
+
+					if agentSessionID != "" {
+						break
+					}
+				}
+
+				if agentSessionID == "" {
+					return fmt.Errorf("could not find session for job %s/%s in registry or transcript logs", planName, jobFilename)
+				}
+			}
+
+			// Output as JSON for easy parsing by grove-flow
+			output := struct {
+				AgentSessionID string `json:"agent_session_id"`
+				Provider       string `json:"provider"`
+			}{
+				AgentSessionID: agentSessionID,
+				Provider:       provider,
+			}
+
+			jsonData, err := json.Marshal(output)
+			if err != nil {
+				return fmt.Errorf("failed to marshal session info to JSON: %w", err)
+			}
+
+			fmt.Println(string(jsonData))
+			return nil
+		},
+	}
 	return cmd
 }
 
