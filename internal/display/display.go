@@ -65,8 +65,8 @@ func DisplayTranscriptEntry(
 							textContent += content.Text
 						} else if content.Type == "tool_use" {
 							// Check for a specialized formatter first
-							if formatter, ok := toolFormatters[content.Name]; ok && detailLevel == "full" {
-								formattedOutput := formatter(content.Input)
+							if formatter, ok := toolFormatters[content.Name]; ok {
+								formattedOutput := formatter(content.Input, detailLevel)
 								if formattedOutput != "" {
 									toolUses = append(toolUses, formattedOutput)
 									continue // Skip generic summary and detailed JSON if formatter was used

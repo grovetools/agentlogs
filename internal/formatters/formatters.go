@@ -10,7 +10,7 @@ import (
 )
 
 // ToolFormatter is a function that formats the input of a tool call.
-type ToolFormatter func(input json.RawMessage) string
+type ToolFormatter func(input json.RawMessage, detailLevel string) string
 
 // stripCommonIndent removes common leading whitespace from all lines
 func stripCommonIndent(text string) string {
@@ -55,7 +55,7 @@ func stripCommonIndent(text string) string {
 }
 
 // FormatWriteTool formats the input for Write or Edit tools, showing a diff-like view.
-func FormatWriteTool(input json.RawMessage, maxLines int) string {
+func FormatWriteTool(input json.RawMessage, maxLines int, detailLevel string) string {
 	var data struct {
 		FilePath  string `json:"file_path"`
 		Content   string `json:"content"`
@@ -109,14 +109,17 @@ func FormatWriteTool(input json.RawMessage, maxLines int) string {
 	} else if data.Content != "" {
 		// This is a Write operation - just show we're writing to the file
 		output.WriteString(fmt.Sprintf("%s Writing to %s\n", theme.IconFilePlus, data.FilePath))
-		// Show first few lines if content is short
-		lines := strings.Split(data.Content, "\n")
-		if len(lines) <= 5 {
+
+		// Strip common indentation before displaying
+		stripped := stripCommonIndent(data.Content)
+		lines := strings.Split(stripped, "\n")
+
+		if detailLevel == "full" || len(lines) <= 5 {
 			for _, line := range lines {
-				output.WriteString(greenStyle.Render(fmt.Sprintf("+ %s\n", line)))
+				output.WriteString(greenStyle.Render(fmt.Sprintf("+ %s", line)) + "\n")
 			}
 		} else {
-			output.WriteString(greenStyle.Render(fmt.Sprintf("+ (%d lines)\n", len(lines))))
+			output.WriteString(greenStyle.Render(fmt.Sprintf("+ (%d lines)", len(lines))) + "\n")
 		}
 	}
 
@@ -124,7 +127,7 @@ func FormatWriteTool(input json.RawMessage, maxLines int) string {
 }
 
 // FormatReadTool formats the input for Read tool with minimal details.
-func FormatReadTool(input json.RawMessage) string {
+func FormatReadTool(input json.RawMessage, detailLevel string) string {
 	var data struct {
 		FilePath string `json:"file_path"`
 		Offset   int    `json:"offset"`
@@ -154,7 +157,7 @@ func FormatReadTool(input json.RawMessage) string {
 }
 
 // FormatTodoWriteTool formats the input for TodoWrite, showing a checklist.
-func FormatTodoWriteTool(input json.RawMessage) string {
+func FormatTodoWriteTool(input json.RawMessage, detailLevel string) string {
 	var data struct {
 		Todos []struct {
 			Content    string `json:"content"`
@@ -182,7 +185,7 @@ func FormatTodoWriteTool(input json.RawMessage) string {
 
 // MakeWriteFormatter creates a Write formatter with the given max lines setting.
 func MakeWriteFormatter(maxLines int) ToolFormatter {
-	return func(input json.RawMessage) string {
-		return FormatWriteTool(input, maxLines)
+	return func(input json.RawMessage, detailLevel string) string {
+		return FormatWriteTool(input, maxLines, detailLevel)
 	}
 }
