@@ -3,12 +3,14 @@ package session
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/mattsolo1/grove-core/pkg/sessions"
 	"github.com/mattsolo1/grove-core/pkg/workspace"
 )
 
@@ -20,11 +22,65 @@ func NewScanner() *Scanner {
 	return &Scanner{}
 }
 
+// loadSessionRegistry scans the ~/.grove/hooks/sessions directory and builds a map
+// of native agent session IDs to their structured metadata.
+func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, error) {
+	registryMap := make(map[string]sessions.SessionMetadata)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	sessionsDir := filepath.Join(homeDir, ".grove", "hooks", "sessions")
+	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+		return registryMap, nil // No registry directory, nothing to load.
+	}
+
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading sessions directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		metadataPath := filepath.Join(sessionsDir, entry.Name(), "metadata.json")
+		data, err := os.ReadFile(metadataPath)
+		if err != nil {
+			continue // Skip sessions without metadata
+		}
+
+		var metadata sessions.SessionMetadata
+		if err := json.Unmarshal(data, &metadata); err != nil {
+			continue // Skip invalid metadata
+		}
+
+		// The key is the native agent session ID (e.g., Claude's UUID).
+		// This is stored in ClaudeSessionID, while SessionID is the flow job ID.
+		if metadata.ClaudeSessionID != "" {
+			registryMap[metadata.ClaudeSessionID] = metadata
+		} else {
+			// Backwards compatibility for older metadata files
+			registryMap[entry.Name()] = metadata
+		}
+	}
+	return registryMap, nil
+}
+
 // Scan searches for and parses all Claude and Codex session logs.
 func (s *Scanner) Scan() ([]SessionInfo, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
+	}
+
+	// 1. Load the session registry first for reliable job association.
+	registry, err := s.loadSessionRegistry()
+	if err != nil {
+		// Log a warning but proceed, allowing fallback to old method.
+		fmt.Fprintf(os.Stderr, "Warning: could not load session registry: %v\n", err)
 	}
 
 	claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
@@ -48,6 +104,40 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			sessionID, cwd, startedAt, jobs, found = s.parseClaudeLog(logPath)
 		}
 
+		// 2. Prioritize data from the registry if available.
+		if metadata, foundInRegistry := registry[sessionID]; foundInRegistry {
+			// Use reliable data from the registry.
+			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
+
+			// Create a JobInfo from the registry metadata.
+			registryJobs := []JobInfo{}
+			if metadata.PlanName != "" && metadata.JobFilePath != "" {
+				// If we have jobs from log parsing, use the first one's LineIndex
+				lineIndex := 0
+				if len(jobs) > 0 {
+					lineIndex = jobs[0].LineIndex
+				}
+				registryJobs = append(registryJobs, JobInfo{
+					Plan:      metadata.PlanName,
+					Job:       filepath.Base(metadata.JobFilePath),
+					LineIndex: lineIndex,
+				})
+			}
+
+			sessions = append(sessions, SessionInfo{
+				SessionID:   sessionID,
+				ProjectName: projectName,
+				ProjectPath: projectPath,
+				Worktree:    worktree,
+				Ecosystem:   ecosystem,
+				Jobs:        registryJobs,
+				LogFilePath: logPath,
+				StartedAt:   metadata.StartedAt,
+			})
+			continue // Skip to next log file
+		}
+
+		// 3. Fallback for logs not in the registry.
 		if !found {
 			stat, err := os.Stat(logPath)
 			if err != nil {
