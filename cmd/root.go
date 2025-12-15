@@ -17,6 +17,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newQueryCmd())
 	rootCmd.AddCommand(newReadCmd())
 	rootCmd.AddCommand(newGetSessionInfoCmd())
+	rootCmd.AddCommand(newStreamCmd())
 	rootCmd.AddCommand(NewVersionCmd())
 
 	return rootCmd
