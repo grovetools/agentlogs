@@ -17,67 +17,43 @@ import (
 
 func newStreamCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "stream <plan/job>",
-		Short:  "Stream logs for a specific plan/job execution",
-		Long:   "Finds and tails the agent transcript log for a given plan/job, formatting the output as it streams.",
+		Use:    "stream <spec>",
+		Short:  "Stream logs for a specific job, session, or log file",
+		Long:   "Finds and tails the agent transcript log. <spec> can be a plan/job, a session ID, or a direct path to a log file.",
 		Args:   cobra.ExactArgs(1),
 		Hidden: true, // Internal command for now
 		RunE: func(cmd *cobra.Command, args []string) error {
-			jobSpec := args[0]
+			spec := args[0]
 
-			parts := strings.Split(jobSpec, "/")
-			if len(parts) != 2 {
-				return fmt.Errorf("invalid job specification: expected format 'plan/job.md'")
+			// Fast path: if spec is a file path, stream it directly
+			if _, err := os.Stat(spec); err == nil {
+				provider := "claude"
+				if strings.Contains(spec, "/.codex/") {
+					provider = "codex"
+				}
+				sessionInfo := &session.SessionInfo{
+					LogFilePath: spec,
+					Ecosystem: provider, // A bit of a hack, but good enough
+				}
+				return tailLogFile(sessionInfo)
 			}
-			planName := parts[0]
-			jobName := parts[1]
 
-			scanner := session.NewScanner()
-			// This initial scan helps locate the session.
-			allSessions, err := scanner.Scan()
+			// Slow path: resolve session from spec
+			sessionInfo, err := session.ResolveSessionInfo(spec)
 			if err != nil {
-				return err
-			}
-
-			var match *session.SessionInfo
-			for i, s := range allSessions {
-				for _, job := range s.Jobs {
-					if job.Plan == planName && job.Job == jobName {
-						match = &allSessions[i]
-						break
-					}
-				}
-				if match != nil {
-					break
-				}
-			}
-
-			if match == nil {
-				// Wait and retry multiple times in case the session hasn't been registered yet.
-				// This can happen when the job just started and the agent is launching.
+				// Retry logic for newly started jobs
 				maxRetries := 5
-				for attempt := 0; attempt < maxRetries && match == nil; attempt++ {
+				for attempt := 0; attempt < maxRetries && err != nil; attempt++ {
 					time.Sleep(2 * time.Second)
-					allSessions, _ = scanner.Scan()
-					for i, s := range allSessions {
-						for _, job := range s.Jobs {
-							if job.Plan == planName && job.Job == jobName {
-								match = &allSessions[i]
-								break
-							}
-						}
-						if match != nil {
-							break
-						}
-					}
+					sessionInfo, err = session.ResolveSessionInfo(spec)
 				}
-				if match == nil {
-					return fmt.Errorf("could not find session for job %s after %d retries", jobSpec, maxRetries)
+				if err != nil {
+					return fmt.Errorf("could not find session for '%s' after multiple retries: %w", spec, err)
 				}
 			}
 
 			// Tail the log file from the end.
-			return tailLogFile(match)
+			return tailLogFile(sessionInfo)
 		},
 	}
 	return cmd
