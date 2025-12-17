@@ -28,18 +28,25 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 	registryMap := make(map[string]sessions.SessionMetadata)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Failed to get user home directory: %v\n", err)
 		return nil, err
 	}
 
 	sessionsDir := filepath.Join(homeDir, ".grove", "hooks", "sessions")
+	fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Scanning sessions directory: %s\n", sessionsDir)
+
 	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Sessions directory does not exist\n")
 		return registryMap, nil // No registry directory, nothing to load.
 	}
 
 	entries, err := os.ReadDir(sessionsDir)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Failed to read sessions directory: %v\n", err)
 		return nil, fmt.Errorf("reading sessions directory: %w", err)
 	}
+
+	fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Found %d entries in sessions directory\n", len(entries))
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -49,11 +56,13 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 		metadataPath := filepath.Join(sessionsDir, entry.Name(), "metadata.json")
 		data, err := os.ReadFile(metadataPath)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Skipping %s - no metadata file: %v\n", entry.Name(), err)
 			continue // Skip sessions without metadata
 		}
 
 		var metadata sessions.SessionMetadata
 		if err := json.Unmarshal(data, &metadata); err != nil {
+			fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Skipping %s - invalid metadata: %v\n", entry.Name(), err)
 			continue // Skip invalid metadata
 		}
 
@@ -61,11 +70,15 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 		// This is stored in ClaudeSessionID, while SessionID is the flow job ID.
 		if metadata.ClaudeSessionID != "" {
 			registryMap[metadata.ClaudeSessionID] = metadata
+			fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Registered session %s -> %s (transcript: %s)\n",
+				metadata.ClaudeSessionID, metadata.SessionID, metadata.TranscriptPath)
 		} else {
 			// Backwards compatibility for older metadata files
 			registryMap[entry.Name()] = metadata
+			fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Registered session %s (legacy format)\n", entry.Name())
 		}
 	}
+	fmt.Fprintf(os.Stderr, "AGLOGS_REGISTRY: Loaded %d sessions from registry\n", len(registryMap))
 	return registryMap, nil
 }
 
@@ -90,6 +103,9 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	codexMatches, _ := filepath.Glob(codexPattern)
 
 	matches := append(claudeMatches, codexMatches...)
+	fmt.Fprintf(os.Stderr, "AGLOGS_SCAN: Found %d Claude transcripts and %d Codex transcripts\n",
+		len(claudeMatches), len(codexMatches))
+
 	var sessions []SessionInfo
 
 	for _, logPath := range matches {
@@ -104,8 +120,13 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			sessionID, cwd, startedAt, jobs, found = s.parseClaudeLog(logPath)
 		}
 
+		fmt.Fprintf(os.Stderr, "AGLOGS_SCAN: Parsed transcript %s -> session_id=%s, found=%v\n",
+			filepath.Base(logPath), sessionID, found)
+
 		// 2. Prioritize data from the registry if available.
 		if metadata, foundInRegistry := registry[sessionID]; foundInRegistry {
+			fmt.Fprintf(os.Stderr, "AGLOGS_SCAN: Found session %s in registry (job: %s/%s)\n",
+				sessionID, metadata.PlanName, filepath.Base(metadata.JobFilePath))
 			// Use reliable data from the registry.
 			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
 
