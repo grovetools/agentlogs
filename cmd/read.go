@@ -172,11 +172,6 @@ func newReadCmd() *cobra.Command {
 				fmt.Println(string(jsonData))
 			} else {
 				// Human-readable output
-				if targetJob != nil {
-					fmt.Printf("=== Job: %s/%s ===\n", targetJob.Plan, targetJob.Job)
-				}
-				fmt.Printf("Project: %s\n", sessionInfo.ProjectName)
-				fmt.Printf("Session: %s\n\n", sessionInfo.SessionID)
 
 				// Create a new scanner to process the captured content
 				contentScanner := bufio.NewScanner(strings.NewReader(logContent))
