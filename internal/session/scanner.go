@@ -112,7 +112,16 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	}
 
 	claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
-	claudeMatches, _ := filepath.Glob(claudePattern)
+	claudeMatchesRaw, _ := filepath.Glob(claudePattern)
+
+	// Filter out agent sidechain files (e.g., agent-*.jsonl)
+	// These are Claude's internal sub-agents, not main sessions
+	var claudeMatches []string
+	for _, match := range claudeMatchesRaw {
+		if !strings.HasPrefix(filepath.Base(match), "agent-") {
+			claudeMatches = append(claudeMatches, match)
+		}
+	}
 
 	codexPattern := filepath.Join(homeDir, ".codex", "sessions", "*", "*", "*", "*.jsonl")
 	codexMatches, _ := filepath.Glob(codexPattern)
@@ -125,6 +134,9 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	}).Info("Found transcript files")
 
 	var sessions []SessionInfo
+	// Track which registry sessions we've already added to avoid duplicates
+	// (multiple .jsonl files like agent sidechains can have the same sessionID)
+	processedRegistrySessions := make(map[string]bool)
 
 	for _, logPath := range matches {
 		var sessionID, cwd string
@@ -146,6 +158,16 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 
 		// 2. Prioritize data from the registry if available.
 		if metadata, foundInRegistry := registry[sessionID]; foundInRegistry {
+			// Skip if we've already processed this registry session
+			// (prevents duplicates from agent sidechain files)
+			if processedRegistrySessions[sessionID] {
+				logger.WithFields(map[string]interface{}{
+					"session_id":      sessionID,
+					"transcript_file": filepath.Base(logPath),
+				}).Debug("Skipping duplicate registry session")
+				continue
+			}
+			processedRegistrySessions[sessionID] = true
 			logger.WithFields(map[string]interface{}{
 				"session_id":    sessionID,
 				"plan_name":     metadata.PlanName,
@@ -169,6 +191,13 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				})
 			}
 
+			// Use TranscriptPath from metadata if available, otherwise fallback to logPath
+			// This ensures we use the main session file, not agent sidechain files
+			transcriptPath := logPath
+			if metadata.TranscriptPath != "" {
+				transcriptPath = metadata.TranscriptPath
+			}
+
 			sessions = append(sessions, SessionInfo{
 				SessionID:   sessionID,
 				ProjectName: projectName,
@@ -176,7 +205,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				Worktree:    worktree,
 				Ecosystem:   ecosystem,
 				Jobs:        registryJobs,
-				LogFilePath: logPath,
+				LogFilePath: transcriptPath,
 				StartedAt:   metadata.StartedAt,
 			})
 			continue // Skip to next log file
