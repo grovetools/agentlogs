@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattsolo1/grove-core/config"
 	"github.com/mattsolo1/grove-core/logging"
 	"github.com/mattsolo1/grove-core/pkg/sessions"
 	"github.com/mattsolo1/grove-core/pkg/workspace"
@@ -35,10 +36,10 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 	}
 
 	sessionsDir := filepath.Join(homeDir, ".grove", "hooks", "sessions")
-	logger.WithField("sessions_dir", sessionsDir).Info("Scanning sessions directory")
+	logger.WithField("sessions_dir", sessionsDir).Debug("Scanning sessions directory")
 
 	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
-		logger.Info("Sessions directory does not exist")
+		logger.Debug("Sessions directory does not exist")
 		return registryMap, nil // No registry directory, nothing to load.
 	}
 
@@ -48,7 +49,7 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 		return nil, fmt.Errorf("reading sessions directory: %w", err)
 	}
 
-	logger.WithField("entry_count", len(entries)).Info("Found entries in sessions directory")
+	logger.WithField("entry_count", len(entries)).Debug("Found entries in sessions directory")
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -84,14 +85,14 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 				"transcript_path":   metadata.TranscriptPath,
 				"plan_name":         metadata.PlanName,
 				"job_file_path":     metadata.JobFilePath,
-			}).Info("Registered session from metadata")
+			}).Debug("Registered session from metadata")
 		} else {
 			// Backwards compatibility for older metadata files
 			registryMap[entry.Name()] = metadata
 			logger.WithField("session_id", entry.Name()).Debug("Registered session (legacy format)")
 		}
 	}
-	logger.WithField("total_sessions", len(registryMap)).Info("Loaded sessions from registry")
+	logger.WithField("total_sessions", len(registryMap)).Debug("Loaded sessions from registry")
 	return registryMap, nil
 }
 
@@ -109,6 +110,12 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	if err != nil {
 		// Log a warning but proceed, allowing fallback to old method.
 		logger.WithError(err).Warn("Could not load session registry, proceeding with fallback")
+	}
+
+	// 1.5. Scan for archived sessions in plan artifact directories.
+	archivedSessions, err := s.scanForArchivedSessions()
+	if err != nil {
+		logger.WithError(err).Warn("Could not scan for archived sessions, proceeding with live sessions only")
 	}
 
 	claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
@@ -131,7 +138,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		"claude_count": len(claudeMatches),
 		"codex_count":  len(codexMatches),
 		"total":        len(matches),
-	}).Info("Found transcript files")
+	}).Debug("Found transcript files")
 
 	var sessions []SessionInfo
 	// Track which registry sessions we've already added to avoid duplicates
@@ -172,7 +179,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				"session_id":    sessionID,
 				"plan_name":     metadata.PlanName,
 				"job_file_path": metadata.JobFilePath,
-			}).Info("Found session in registry, using metadata")
+			}).Debug("Found session in registry, using metadata")
 			// Use reliable data from the registry.
 			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
 
@@ -241,6 +248,16 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			StartedAt:   startedAt,
 		})
 	}
+
+	// 4. Merge archived sessions, avoiding duplicates with live sessions.
+	for _, archivedSession := range archivedSessions {
+		// If a session with this ID was already processed from the live registry, skip it.
+		if _, exists := processedRegistrySessions[archivedSession.SessionID]; exists {
+			continue
+		}
+		sessions = append(sessions, archivedSession)
+	}
+
 	return sessions, nil
 }
 
@@ -436,4 +453,83 @@ func (s *Scanner) parseCodexLog(logPath string) (sessionID, cwd string, startedA
 		}
 	}
 	return
+}
+
+// scanForArchivedSessions finds sessions archived in plan artifact directories.
+func (s *Scanner) scanForArchivedSessions() ([]SessionInfo, error) {
+	var archivedSessions []SessionInfo
+	logger := logging.NewLogger("aglogs-archive-scan")
+
+	// 1. Use grove-core to find all plan directories.
+	coreCfg, err := config.LoadDefault()
+	if err != nil {
+		coreCfg = &config.Config{} // Proceed with defaults
+	}
+	discoveryService := workspace.NewDiscoveryService(logger.Logger)
+	discoveryResult, err := discoveryService.DiscoverAll()
+	if err != nil {
+		return nil, fmt.Errorf("workspace discovery failed: %w", err)
+	}
+	provider := workspace.NewProvider(discoveryResult)
+	locator := workspace.NewNotebookLocator(coreCfg)
+	scannedDirs, err := locator.ScanForAllPlans(provider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan for plans: %w", err)
+	}
+
+	// 2. For each plan directory, search for archived sessions.
+	for _, scannedDir := range scannedDirs {
+		artifactsDir := filepath.Join(scannedDir.Path, ".artifacts")
+		jobDirs, err := os.ReadDir(artifactsDir)
+		if err != nil {
+			continue
+		}
+
+		for _, jobEntry := range jobDirs {
+			if !jobEntry.IsDir() {
+				continue
+			}
+
+			metadataPath := filepath.Join(artifactsDir, jobEntry.Name(), "metadata.json")
+			if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+				continue
+			}
+
+			// 3. Parse metadata and construct SessionInfo.
+			data, err := os.ReadFile(metadataPath)
+			if err != nil {
+				continue
+			}
+			var metadata sessions.SessionMetadata
+			if err := json.Unmarshal(data, &metadata); err != nil {
+				continue
+			}
+
+			transcriptPath := filepath.Join(artifactsDir, jobEntry.Name(), "transcript.jsonl")
+
+			// Construct a JobInfo from the metadata
+			jobInfo := []JobInfo{}
+			if metadata.PlanName != "" && metadata.JobFilePath != "" {
+				jobInfo = append(jobInfo, JobInfo{
+					Plan:      metadata.PlanName,
+					Job:       filepath.Base(metadata.JobFilePath),
+					LineIndex: 0, // Not relevant for archived sessions
+				})
+			}
+
+			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
+
+			archivedSessions = append(archivedSessions, SessionInfo{
+				SessionID:   metadata.ClaudeSessionID, // Use the native agent ID
+				ProjectName: projectName,
+				ProjectPath: projectPath,
+				Worktree:    worktree,
+				Ecosystem:   ecosystem,
+				Jobs:        jobInfo,
+				LogFilePath: transcriptPath, // Point to the archived transcript
+				StartedAt:   metadata.StartedAt,
+			})
+		}
+	}
+	return archivedSessions, nil
 }

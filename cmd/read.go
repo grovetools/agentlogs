@@ -27,9 +27,46 @@ func newReadCmd() *cobra.Command {
 			detailFlag, _ := cmd.Flags().GetString("detail")
 			jsonOutput, _ := cmd.Flags().GetBool("json")
 
-			sessionInfo, err := session.ResolveSessionInfo(spec)
-			if err != nil {
-				return fmt.Errorf("could not resolve session for '%s': %w", spec, err)
+			var sessionInfo *session.SessionInfo
+			var err error
+
+			// Fast path: if spec is a file path, read it directly
+			if fileInfo, statErr := os.Stat(spec); statErr == nil && !fileInfo.IsDir() {
+				// Construct minimal SessionInfo from the file path
+				provider := "claude"
+				if strings.Contains(spec, "/.codex/") {
+					provider = "codex"
+				}
+
+				// Extract session ID and project name from path if possible
+				sessionID := "unknown"
+				projectName := "unknown"
+				pathParts := strings.Split(spec, "/")
+				for i, part := range pathParts {
+					if part == ".claude" || part == ".codex" {
+						if i+1 < len(pathParts) {
+							sessionID = pathParts[i+1]
+						}
+						if i > 0 {
+							projectName = pathParts[i-1]
+						}
+						break
+					}
+				}
+
+				sessionInfo = &session.SessionInfo{
+					LogFilePath: spec,
+					Provider:    provider,
+					SessionID:   sessionID,
+					ProjectName: projectName,
+					Jobs:        []session.JobInfo{},
+				}
+			} else {
+				// Slow path: resolve session from spec
+				sessionInfo, err = session.ResolveSessionInfo(spec)
+				if err != nil {
+					return fmt.Errorf("could not resolve session for '%s': %w", spec, err)
+				}
 			}
 
 			// Find the specific job within the session if the spec was a plan/job
