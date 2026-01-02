@@ -155,15 +155,15 @@ func newReadCmd() *cobra.Command {
 					provider = "codex"
 				}
 				output := struct {
-					LogContent   string `json:"log_content"`
-					LogFilePath  string `json:"log_file_path"`
-					Provider     string `json:"provider"`
-					SessionID    string `json:"session_id"`
+					LogContent  string `json:"log_content"`
+					LogFilePath string `json:"log_file_path"`
+					Provider    string `json:"provider"`
+					SessionID   string `json:"session_id"`
 				}{
-					LogContent:   logContent,
-					LogFilePath:  sessionInfo.LogFilePath,
-					Provider:     provider,
-					SessionID:    sessionInfo.SessionID,
+					LogContent:  logContent,
+					LogFilePath: sessionInfo.LogFilePath,
+					Provider:    provider,
+					SessionID:   sessionInfo.SessionID,
 				}
 				jsonData, err := json.Marshal(output)
 				if err != nil {
@@ -175,6 +175,10 @@ func newReadCmd() *cobra.Command {
 
 				// Create a new scanner to process the captured content
 				contentScanner := bufio.NewScanner(strings.NewReader(logContent))
+				// Increase the buffer to handle long lines, matching the fileScanner config.
+				const maxScanTokenSize = 1024 * 1024 // 1MB
+				buf := make([]byte, 0, 64*1024)
+				contentScanner.Buffer(buf, maxScanTokenSize)
 				for contentScanner.Scan() {
 					line := contentScanner.Bytes()
 					if len(line) > 0 {
