@@ -118,6 +118,14 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		logger.WithError(err).Warn("Could not scan for archived sessions, proceeding with live sessions only")
 	}
 
+	// Create a map of archived session IDs to prevent duplicate, low-fidelity parsing.
+	archivedSessionIDs := make(map[string]bool)
+	for _, s := range archivedSessions {
+		if s.SessionID != "" {
+			archivedSessionIDs[s.SessionID] = true
+		}
+	}
+
 	claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
 	claudeMatchesRaw, _ := filepath.Glob(claudePattern)
 
@@ -180,6 +188,11 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				"plan_name":     metadata.PlanName,
 				"job_file_path": metadata.JobFilePath,
 			}).Debug("Found session in registry, using metadata")
+
+			// If this session is also in our archive map, remove it to prevent it from being added twice.
+			// The live registry is the most up-to-date source.
+			delete(archivedSessionIDs, sessionID)
+
 			// Use reliable data from the registry.
 			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
 
@@ -218,7 +231,14 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			continue // Skip to next log file
 		}
 
-		// 3. Fallback for logs not in the registry.
+		// 3. Before falling back, check if we have this session in our archives.
+		// If so, we'll use the high-fidelity archived data later and skip this low-fidelity parse.
+		if _, isArchived := archivedSessionIDs[sessionID]; isArchived {
+			logger.WithField("session_id", sessionID).Debug("Skipping raw log parse; session will be loaded from archive.")
+			continue
+		}
+
+		// 4. Fallback for logs not in the registry or archives.
 		if !found {
 			stat, err := os.Stat(logPath)
 			if err != nil {
@@ -249,13 +269,12 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		})
 	}
 
-	// 4. Merge archived sessions, avoiding duplicates with live sessions.
+	// 5. Add all remaining archived sessions.
+	// We've already filtered out any that were found in the live registry.
 	for _, archivedSession := range archivedSessions {
-		// If a session with this ID was already processed from the live registry, skip it.
-		if _, exists := processedRegistrySessions[archivedSession.SessionID]; exists {
-			continue
+		if _, exists := archivedSessionIDs[archivedSession.SessionID]; exists {
+			sessions = append(sessions, archivedSession)
 		}
-		sessions = append(sessions, archivedSession)
 	}
 
 	return sessions, nil
