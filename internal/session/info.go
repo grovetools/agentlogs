@@ -19,5 +19,5 @@ type SessionInfo struct {
 	Jobs        []JobInfo `json:"jobs,omitempty"`
 	LogFilePath string    `json:"logFilePath"`
 	StartedAt   time.Time `json:"startedAt"`
-	Provider    string    `json:"provider,omitempty"` // "claude" or "codex"
+	Provider    string    `json:"provider,omitempty"` // "claude", "codex", or "opencode"
 }

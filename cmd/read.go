@@ -10,6 +10,7 @@ import (
 	aglogs_config "github.com/mattsolo1/grove-agent-logs/config"
 	"github.com/mattsolo1/grove-agent-logs/internal/display"
 	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
+	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
 	core_config "github.com/mattsolo1/grove-core/config"
 	"github.com/spf13/cobra"
@@ -115,7 +116,12 @@ func newReadCmd() *cobra.Command {
 				"TodoWrite": formatters.FormatTodoWriteTool,
 			}
 
-			// --- Log Reading ---
+			// --- Handle OpenCode sessions specially ---
+			if sessionInfo.Provider == "opencode" {
+				return readOpenCodeSession(sessionInfo, detailLevel, jsonOutput)
+			}
+
+			// --- Log Reading for Claude/Codex ---
 			file, err := os.Open(sessionInfo.LogFilePath)
 			if err != nil {
 				return err
@@ -201,4 +207,40 @@ func newReadCmd() *cobra.Command {
 	cmd.Flags().String("detail", "", "Set detail level for output ('summary' or 'full'). Overrides config.")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format with additional metadata")
 	return cmd
+}
+
+// readOpenCodeSession handles reading and displaying OpenCode sessions.
+func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, jsonOutput bool) error {
+	assembler, err := opencode.NewAssembler()
+	if err != nil {
+		return fmt.Errorf("creating OpenCode assembler: %w", err)
+	}
+
+	entries, err := assembler.AssembleTranscript(sessionInfo.SessionID)
+	if err != nil {
+		return fmt.Errorf("assembling OpenCode transcript: %w", err)
+	}
+
+	if jsonOutput {
+		output := struct {
+			Entries     []opencode.TranscriptEntry `json:"entries"`
+			LogFilePath string                     `json:"log_file_path"`
+			Provider    string                     `json:"provider"`
+			SessionID   string                     `json:"session_id"`
+		}{
+			Entries:     entries,
+			LogFilePath: sessionInfo.LogFilePath,
+			Provider:    "opencode",
+			SessionID:   sessionInfo.SessionID,
+		}
+		jsonData, err := json.Marshal(output)
+		if err != nil {
+			return fmt.Errorf("failed to marshal to JSON: %w", err)
+		}
+		fmt.Println(string(jsonData))
+	} else {
+		display.DisplayOpenCodeTranscript(entries, detailLevel)
+	}
+
+	return nil
 }

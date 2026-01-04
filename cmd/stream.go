@@ -11,6 +11,7 @@ import (
 
 	"github.com/mattsolo1/grove-agent-logs/internal/display"
 	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
+	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -52,11 +53,57 @@ func newStreamCmd() *cobra.Command {
 				}
 			}
 
+			// Handle OpenCode sessions specially
+			if sessionInfo.Provider == "opencode" {
+				return streamOpenCodeSession(sessionInfo)
+			}
+
 			// Tail the log file from the end.
 			return tailLogFile(sessionInfo)
 		},
 	}
 	return cmd
+}
+
+// streamOpenCodeSession watches an OpenCode session for new messages and displays them.
+func streamOpenCodeSession(s *session.SessionInfo) error {
+	assembler, err := opencode.NewAssembler()
+	if err != nil {
+		return fmt.Errorf("creating OpenCode assembler: %w", err)
+	}
+
+	// Track which messages we've already displayed
+	seenMessages := make(map[string]bool)
+
+	// Initial display of existing messages
+	entries, err := assembler.AssembleTranscript(s.SessionID)
+	if err != nil {
+		return fmt.Errorf("assembling OpenCode transcript: %w", err)
+	}
+
+	for _, entry := range entries {
+		seenMessages[entry.MessageID] = true
+		display.DisplayOpenCodeEntry(entry, "full")
+	}
+
+	fmt.Println("\n--- Watching for new messages... ---\n")
+
+	// Poll for new messages
+	for {
+		time.Sleep(1 * time.Second)
+
+		entries, err := assembler.AssembleTranscript(s.SessionID)
+		if err != nil {
+			continue // Ignore transient errors
+		}
+
+		for _, entry := range entries {
+			if !seenMessages[entry.MessageID] {
+				seenMessages[entry.MessageID] = true
+				display.DisplayOpenCodeEntry(entry, "full")
+			}
+		}
+	}
 }
 
 func tailLogFile(s *session.SessionInfo) error {

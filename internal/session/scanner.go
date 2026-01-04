@@ -277,6 +277,15 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		}
 	}
 
+	// 6. Scan for OpenCode sessions.
+	opencodeSessions, err := s.scanOpenCodeSessions()
+	if err != nil {
+		logger.WithError(err).Warn("Could not scan for OpenCode sessions, proceeding without them")
+	} else {
+		sessions = append(sessions, opencodeSessions...)
+		logger.WithField("opencode_count", len(opencodeSessions)).Debug("Added OpenCode sessions")
+	}
+
 	return sessions, nil
 }
 
@@ -551,4 +560,133 @@ func (s *Scanner) scanForArchivedSessions() ([]SessionInfo, error) {
 		}
 	}
 	return archivedSessions, nil
+}
+
+// scanOpenCodeSessions scans for OpenCode sessions in ~/.local/share/opencode/storage/
+func (s *Scanner) scanOpenCodeSessions() ([]SessionInfo, error) {
+	logger := logging.NewLogger("aglogs-opencode-scan")
+	var sessions []SessionInfo
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("getting home directory: %w", err)
+	}
+
+	storageDir := filepath.Join(homeDir, ".local", "share", "opencode", "storage")
+	projectsDir := filepath.Join(storageDir, "project")
+	sessionsDir := filepath.Join(storageDir, "session")
+
+	// Check if OpenCode storage exists
+	if _, err := os.Stat(storageDir); os.IsNotExist(err) {
+		logger.Debug("OpenCode storage directory does not exist")
+		return sessions, nil
+	}
+
+	// Load all projects to map project IDs to working directories
+	projectMap := make(map[string]string) // projectID -> worktree path
+	projectEntries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		logger.WithError(err).Debug("Could not read OpenCode projects directory")
+	} else {
+		for _, entry := range projectEntries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+				projectPath := filepath.Join(projectsDir, entry.Name())
+				data, err := os.ReadFile(projectPath)
+				if err != nil {
+					continue
+				}
+
+				var project struct {
+					ID       string `json:"id"`
+					Worktree string `json:"worktree"`
+				}
+				if err := json.Unmarshal(data, &project); err != nil {
+					continue
+				}
+				projectMap[project.ID] = project.Worktree
+			}
+		}
+	}
+	logger.WithField("project_count", len(projectMap)).Debug("Loaded OpenCode projects")
+
+	// Scan session directories (organized by project hash)
+	projectHashDirs, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		logger.WithError(err).Debug("Could not read OpenCode sessions directory")
+		return sessions, nil
+	}
+
+	for _, projectHashDir := range projectHashDirs {
+		if !projectHashDir.IsDir() {
+			continue
+		}
+
+		projectSessionsPath := filepath.Join(sessionsDir, projectHashDir.Name())
+		sessionFiles, err := os.ReadDir(projectSessionsPath)
+		if err != nil {
+			continue
+		}
+
+		for _, sessionFile := range sessionFiles {
+			if !strings.HasPrefix(sessionFile.Name(), "ses_") || !strings.HasSuffix(sessionFile.Name(), ".json") {
+				continue
+			}
+
+			sessionPath := filepath.Join(projectSessionsPath, sessionFile.Name())
+			data, err := os.ReadFile(sessionPath)
+			if err != nil {
+				continue
+			}
+
+			var session struct {
+				ID        string `json:"id"`
+				Version   string `json:"version"`
+				ProjectID string `json:"projectID"`
+				Directory string `json:"directory"`
+				Title     string `json:"title"`
+				Time      struct {
+					Created int64 `json:"created"`
+					Updated int64 `json:"updated"`
+				} `json:"time"`
+				Summary struct {
+					Additions int `json:"additions"`
+					Deletions int `json:"deletions"`
+					Files     int `json:"files"`
+				} `json:"summary"`
+			}
+			if err := json.Unmarshal(data, &session); err != nil {
+				logger.WithError(err).WithField("file", sessionPath).Debug("Failed to parse session")
+				continue
+			}
+
+			// Determine the working directory
+			workDir := session.Directory
+			if workDir == "" {
+				workDir = projectMap[session.ProjectID]
+			}
+
+			// Parse project path info
+			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(workDir)
+
+			// Convert timestamp (milliseconds to time.Time)
+			startedAt := time.Unix(0, session.Time.Created*int64(time.Millisecond))
+
+			// For OpenCode, the LogFilePath points to the session metadata file
+			// The actual transcript needs to be assembled from message/ and part/ directories
+			sessions = append(sessions, SessionInfo{
+				SessionID:   session.ID,
+				ProjectName: projectName,
+				ProjectPath: projectPath,
+				Worktree:    worktree,
+				Ecosystem:   ecosystem,
+				Jobs:        []JobInfo{}, // OpenCode sessions don't track grove jobs the same way
+				LogFilePath: sessionPath, // Points to the session metadata file
+				StartedAt:   startedAt,
+				Provider:    "opencode",
+			})
+		}
+	}
+
+	logger.WithField("session_count", len(sessions)).Debug("Found OpenCode sessions")
+	return sessions, nil
 }
