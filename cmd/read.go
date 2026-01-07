@@ -181,11 +181,14 @@ func newReadCmd() *cobra.Command {
 				// Human-readable output using unified normalizers
 
 				// Select appropriate normalizer based on provider
+				isCodex := strings.Contains(sessionInfo.LogFilePath, "/.codex/")
 				var normalizer transcript.Normalizer
-				if strings.Contains(sessionInfo.LogFilePath, "/.codex/") {
+				var claudeNormalizer *transcript.ClaudeNormalizer
+				if isCodex {
 					normalizer = transcript.NewCodexNormalizer()
 				} else {
-					normalizer = transcript.NewClaudeNormalizer()
+					claudeNormalizer = transcript.NewClaudeNormalizer()
+					normalizer = claudeNormalizer
 				}
 
 				// Create a new scanner to process the captured content
@@ -200,6 +203,13 @@ func newReadCmd() *cobra.Command {
 						if entry, err := normalizer.NormalizeLine(line); err == nil && entry != nil {
 							display.DisplayUnifiedEntry(*entry, detailLevel, toolFormatters)
 						}
+					}
+				}
+
+				// Flush any remaining buffered entries (Claude normalizer buffers tool calls)
+				if claudeNormalizer != nil {
+					for _, entry := range claudeNormalizer.Flush() {
+						display.DisplayUnifiedEntry(*entry, detailLevel, toolFormatters)
 					}
 				}
 			}
