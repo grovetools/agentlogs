@@ -149,6 +149,8 @@ func DisplayUnifiedEntry(
 				for _, line := range strings.Split(text, "\n") {
 					if strings.TrimSpace(line) != "" {
 						fmt.Println(italicMuted.Render("  " + line))
+					} else {
+						fmt.Println() // Preserve paragraph breaks
 					}
 				}
 				fmt.Println() // Blank line after thinking
