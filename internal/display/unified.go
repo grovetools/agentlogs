@@ -21,18 +21,41 @@ func DisplayUnifiedEntry(
 	userStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Yellow)
 	mutedStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.MutedText)
 
-	var textParts []string
-	var toolDisplays []string
+	// For user messages, display all text content together
+	if entry.Role == "user" {
+		var textParts []string
+		for _, part := range entry.Parts {
+			if part.Type == "text" {
+				if content, ok := part.Content.(transcript.UnifiedTextContent); ok && content.Text != "" {
+					textParts = append(textParts, content.Text)
+				} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
+					if text, ok := contentMap["text"].(string); ok && text != "" {
+						textParts = append(textParts, text)
+					}
+				}
+			}
+		}
+		if len(textParts) > 0 {
+			roleIcon := userStyle.Render(theme.IconLightbulb)
+			fmt.Printf("%s %s\n\n", roleIcon, strings.Join(textParts, "\n"))
+		}
+		return
+	}
+
+	// For assistant messages, render parts in order to preserve interleaving
+	role := robotStyle.Render(theme.IconRobot)
 
 	for _, part := range entry.Parts {
 		switch part.Type {
 		case "text":
-			if content, ok := part.Content.(transcript.UnifiedTextContent); ok && content.Text != "" {
-				textParts = append(textParts, content.Text)
+			var text string
+			if content, ok := part.Content.(transcript.UnifiedTextContent); ok {
+				text = content.Text
 			} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-				if text, ok := contentMap["text"].(string); ok && text != "" {
-					textParts = append(textParts, text)
-				}
+				text, _ = contentMap["text"].(string)
+			}
+			if text != "" {
+				fmt.Printf("%s %s\n\n", role, text)
 			}
 
 		case "tool_call":
@@ -40,7 +63,6 @@ func DisplayUnifiedEntry(
 			if content, ok := part.Content.(transcript.UnifiedToolCall); ok {
 				toolCall = content
 			} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-				// Handle JSON-decoded content
 				toolCall = transcript.UnifiedToolCall{
 					ID:     getStringField(contentMap, "id"),
 					Name:   getStringField(contentMap, "name"),
@@ -56,7 +78,7 @@ func DisplayUnifiedEntry(
 
 			toolDisplay := formatUnifiedToolCall(toolCall, detailLevel, toolFormatters, mutedStyle)
 			if toolDisplay != "" {
-				toolDisplays = append(toolDisplays, toolDisplay)
+				fmt.Printf("%s %s\n", role, toolDisplay)
 			}
 
 		case "reasoning":
@@ -67,20 +89,16 @@ func DisplayUnifiedEntry(
 				text = getStringField(contentMap, "text")
 			}
 			if text != "" {
-				// Format thinking with "∴ Thinking…" header, mirroring Claude's output
-				var sb strings.Builder
-				sb.WriteString(mutedStyle.Render("∴ Thinking…"))
-				sb.WriteString("\n")
-				// Indent the thinking text
+				// Format thinking with "∴ Thinking…" header
+				fmt.Print(mutedStyle.Render("∴ Thinking…"))
+				fmt.Println()
 				for _, line := range strings.Split(text, "\n") {
-					sb.WriteString(mutedStyle.Render("  " + line))
-					sb.WriteString("\n")
+					fmt.Println(mutedStyle.Render("  " + line))
 				}
-				toolDisplays = append(toolDisplays, sb.String())
 			}
 
 		case "tool_result":
-			// Tool results are typically verbose; skip in summary mode
+			// Tool results shown in full mode
 			if detailLevel == "full" {
 				var output string
 				if content, ok := part.Content.(transcript.UnifiedToolResult); ok {
@@ -89,37 +107,10 @@ func DisplayUnifiedEntry(
 					output = getStringField(contentMap, "output")
 				}
 				if output != "" && len(output) < 500 {
-					toolDisplays = append(toolDisplays, mutedStyle.Render(fmt.Sprintf("  Output: %s", output)))
+					fmt.Printf("%s %s\n", role, mutedStyle.Render(fmt.Sprintf("  Output: %s", output)))
 				}
 			}
 		}
-	}
-
-	// Display tool calls/reasoning
-	if len(toolDisplays) > 0 {
-		role := robotStyle.Render(theme.IconRobot)
-		for _, td := range toolDisplays {
-			// Thinking blocks already include their own formatting, don't prefix with robot icon
-			if strings.HasPrefix(td, mutedStyle.Render("∴")) {
-				fmt.Print(td)
-			} else {
-				fmt.Printf("%s %s\n", role, td)
-			}
-		}
-		if len(textParts) > 0 {
-			fmt.Println() // Space between tools and text
-		}
-	}
-
-	// Display text content
-	if len(textParts) > 0 {
-		var roleIcon string
-		if entry.Role == "assistant" {
-			roleIcon = robotStyle.Render(theme.IconRobot)
-		} else {
-			roleIcon = userStyle.Render(theme.IconLightbulb)
-		}
-		fmt.Printf("%s %s\n\n", roleIcon, strings.Join(textParts, "\n"))
 	}
 }
 
