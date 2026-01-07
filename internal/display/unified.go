@@ -1,7 +1,6 @@
 package display
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -9,6 +8,12 @@ import (
 	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
 	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 	"github.com/mattsolo1/grove-core/tui/theme"
+)
+
+// Formatting constants for Claude Code-style output
+const (
+	bulletChar  = "⏺"  // Main action bullet
+	treeChar    = "⎿"  // Tree connector for sub-content
 )
 
 // DisplayUnifiedEntry renders a single UnifiedEntry with consistent formatting.
@@ -21,11 +26,17 @@ func DisplayUnifiedEntry(
 	userStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Yellow)
 	mutedStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.MutedText)
 
-	// For user messages, display all text content together
+	bullet := robotStyle.Render(bulletChar)
+	tree := mutedStyle.Render(treeChar)
+
+	// For user messages, display text content and tool results
 	if entry.Role == "user" {
 		var textParts []string
+		var hasToolResults bool
+
 		for _, part := range entry.Parts {
-			if part.Type == "text" {
+			switch part.Type {
+			case "text":
 				if content, ok := part.Content.(transcript.UnifiedTextContent); ok && content.Text != "" {
 					textParts = append(textParts, content.Text)
 				} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
@@ -33,18 +44,49 @@ func DisplayUnifiedEntry(
 						textParts = append(textParts, text)
 					}
 				}
+			case "tool_result":
+				// Show tool results with tree connector (these belong to previous tool call)
+				var output string
+				if content, ok := part.Content.(transcript.UnifiedToolResult); ok {
+					output = content.Output
+				} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
+					output = getStringField(contentMap, "output")
+				}
+				if output != "" {
+					hasToolResults = true
+					// For long outputs (like file reads), show a summary
+					lines := strings.Split(strings.TrimSpace(output), "\n")
+					if len(lines) > 5 {
+						// Show compact summary
+						fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
+					} else {
+						// Show short output directly
+						for i, line := range lines {
+							if strings.TrimSpace(line) != "" {
+								if i == 0 {
+									fmt.Printf("  %s  %s\n", tree, line)
+								} else {
+									fmt.Printf("     %s\n", line)
+								}
+							}
+						}
+					}
+				}
 			}
 		}
+
+		if hasToolResults {
+			fmt.Println() // Blank line after tool results
+		}
+
 		if len(textParts) > 0 {
-			roleIcon := userStyle.Render(theme.IconLightbulb)
-			fmt.Printf("%s %s\n\n", roleIcon, strings.Join(textParts, "\n"))
+			userBullet := userStyle.Render(bulletChar)
+			fmt.Printf("%s %s\n\n", userBullet, strings.Join(textParts, "\n"))
 		}
 		return
 	}
 
 	// For assistant messages, render parts in order to preserve interleaving
-	role := robotStyle.Render(theme.IconRobot)
-
 	for _, part := range entry.Parts {
 		switch part.Type {
 		case "text":
@@ -55,7 +97,7 @@ func DisplayUnifiedEntry(
 				text, _ = contentMap["text"].(string)
 			}
 			if text != "" {
-				fmt.Printf("%s %s\n\n", role, text)
+				fmt.Printf("%s %s\n\n", bullet, text)
 			}
 
 		case "tool_call":
@@ -78,8 +120,18 @@ func DisplayUnifiedEntry(
 
 			toolDisplay := formatUnifiedToolCall(toolCall, detailLevel, toolFormatters, mutedStyle)
 			if toolDisplay != "" {
-				fmt.Printf("%s %s\n", role, toolDisplay)
+				fmt.Printf("%s %s\n", bullet, toolDisplay)
 			}
+
+			// Show output with tree connector (for embedded output like OpenCode)
+			if toolCall.Output != "" {
+				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, mutedStyle)
+				if outputDisplay != "" {
+					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(outputDisplay))
+					fmt.Println() // Blank line after embedded output
+				}
+			}
+			// Don't add blank line here - tool_result entry will handle spacing
 
 		case "reasoning":
 			var text string
@@ -90,26 +142,43 @@ func DisplayUnifiedEntry(
 			}
 			if text != "" {
 				// Format thinking with "∴ Thinking…" header
-				fmt.Print(mutedStyle.Render("∴ Thinking…"))
-				fmt.Println()
+				fmt.Println(mutedStyle.Render("∴ Thinking…"))
 				for _, line := range strings.Split(text, "\n") {
-					fmt.Println(mutedStyle.Render("  " + line))
+					if strings.TrimSpace(line) != "" {
+						fmt.Println(mutedStyle.Render("  " + line))
+					}
 				}
+				fmt.Println() // Blank line after thinking
 			}
 
 		case "tool_result":
-			// Tool results shown in full mode
-			if detailLevel == "full" {
-				var output string
-				if content, ok := part.Content.(transcript.UnifiedToolResult); ok {
-					output = content.Output
-				} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-					output = getStringField(contentMap, "output")
-				}
-				if output != "" && len(output) < 500 {
-					fmt.Printf("%s %s\n", role, mutedStyle.Render(fmt.Sprintf("  Output: %s", output)))
+			// Tool results shown with tree connector (only first line gets ⎿)
+			var output string
+			if content, ok := part.Content.(transcript.UnifiedToolResult); ok {
+				output = content.Output
+			} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
+				output = getStringField(contentMap, "output")
+			}
+			if output != "" {
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+				if len(lines) > 5 {
+					// Compact summary for long output
+					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
+				} else {
+					firstLine := true
+					for _, line := range lines {
+						if strings.TrimSpace(line) != "" {
+							if firstLine {
+								fmt.Printf("  %s  %s\n", tree, line)
+								firstLine = false
+							} else {
+								fmt.Printf("     %s\n", line)
+							}
+						}
+					}
 				}
 			}
+			fmt.Println() // Blank line after tool result (even if empty)
 		}
 	}
 }
@@ -123,6 +192,7 @@ func getStringField(m map[string]interface{}, key string) string {
 }
 
 // formatToolOutput formats tool output, with special handling for read-like tools.
+// Returns a simple string without leading/trailing whitespace - caller handles indentation.
 func formatToolOutput(toolName string, output string, mutedStyle lipgloss.Style) string {
 	if output == "" {
 		return ""
@@ -138,97 +208,105 @@ func formatToolOutput(toolName string, output string, mutedStyle lipgloss.Style)
 			lineCount--
 		}
 		if lineCount > 5 {
-			return mutedStyle.Render(fmt.Sprintf("  (%d lines read)\n", lineCount))
+			return fmt.Sprintf("(%d lines read)", lineCount)
 		}
 	}
 
 	// For short outputs, show the content
+	output = strings.TrimSpace(output)
 	if len(output) < 200 {
-		return mutedStyle.Render(fmt.Sprintf("  Output: %s\n", output))
+		return fmt.Sprintf("Output: %s", output)
 	}
 
 	// For longer outputs, truncate
 	lines := strings.Split(output, "\n")
 	if len(lines) > 5 {
-		return mutedStyle.Render(fmt.Sprintf("  Output: (%d lines)\n", len(lines)))
+		return fmt.Sprintf("Output: (%d lines)", len(lines))
 	}
 
-	return mutedStyle.Render(fmt.Sprintf("  Output: %s\n", output))
+	return fmt.Sprintf("Output: %s", output)
 }
 
 // formatUnifiedToolCall formats a tool call for display.
+// Uses consistent ToolName(arg) format for all tools.
 func formatUnifiedToolCall(
 	tool transcript.UnifiedToolCall,
 	detailLevel string,
 	toolFormatters map[string]formatters.ToolFormatter,
 	mutedStyle lipgloss.Style,
 ) string {
-	// Check for specialized formatter first
-	if toolFormatters != nil {
-		if formatter, ok := toolFormatters[tool.Name]; ok {
-			inputJSON, _ := json.Marshal(tool.Input)
-			if formatted := formatter(inputJSON, detailLevel); formatted != "" {
-				// Add output summary if available
-				if tool.Output != "" {
-					return formatted + formatToolOutput(tool.Name, tool.Output, mutedStyle)
-				}
-				return formatted
-			}
-		}
-	}
+	// Format as ToolName(key_arg) for consistency
+	keyArg := extractKeyArg(tool)
 
-	// Full detail mode
-	if detailLevel == "full" {
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("▼ %s", tool.Name))
-		if tool.Title != "" {
-			sb.WriteString(fmt.Sprintf(" (%s)", tool.Title))
-		}
-		sb.WriteString("\n")
-
-		if len(tool.Input) > 0 {
-			prettyInput, err := json.MarshalIndent(tool.Input, "  ", "  ")
-			if err == nil {
-				sb.WriteString(mutedStyle.Render(fmt.Sprintf("  Input: %s\n", string(prettyInput))))
-			}
-		}
-
-		if tool.Diff != "" {
-			diff := tool.Diff
-			lines := strings.Split(diff, "\n")
-			if len(lines) > 20 {
-				diff = strings.Join(lines[:20], "\n") + "\n... (truncated)"
-			}
-			sb.WriteString(mutedStyle.Render(fmt.Sprintf("  Diff:\n%s\n", diff)))
-		} else if tool.Output != "" {
-			sb.WriteString(formatToolOutput(tool.Name, tool.Output, mutedStyle))
-		}
-
-		return sb.String()
-	}
-
-	// Summary mode
-	toolInfo := fmt.Sprintf("[Using %s", tool.Name)
-
-	// Extract common parameters for summary
-	if filePath, ok := tool.Input["file_path"].(string); ok {
-		toolInfo += fmt.Sprintf(" on %s", filePath)
-	} else if filePath, ok := tool.Input["filePath"].(string); ok {
-		toolInfo += fmt.Sprintf(" on %s", filePath)
-	} else if command, ok := tool.Input["command"].(string); ok {
-		if len(command) > 50 {
-			toolInfo += fmt.Sprintf(": %s...", command[:50])
-		} else {
-			toolInfo += fmt.Sprintf(": %s", command)
-		}
-	} else if pattern, ok := tool.Input["pattern"].(string); ok {
-		toolInfo += fmt.Sprintf(" for '%s'", pattern)
+	var display string
+	if keyArg != "" {
+		display = fmt.Sprintf("%s(%s)", tool.Name, keyArg)
 	} else if tool.Title != "" {
-		toolInfo += fmt.Sprintf(" (%s)", tool.Title)
+		display = fmt.Sprintf("%s(%s)", tool.Name, tool.Title)
+	} else {
+		display = tool.Name
 	}
 
-	toolInfo += "]"
-	return toolInfo
+	return display
+}
+
+// extractKeyArg extracts the most relevant argument for inline display.
+func extractKeyArg(tool transcript.UnifiedToolCall) string {
+	// Check common parameter names in order of preference
+	if cmd, ok := tool.Input["command"].(string); ok {
+		// For commands, show a truncated version
+		cmd = strings.TrimSpace(cmd)
+		if len(cmd) > 60 {
+			return cmd[:57] + "..."
+		}
+		return cmd
+	}
+
+	if filePath, ok := tool.Input["file_path"].(string); ok {
+		return shortenPath(filePath)
+	}
+
+	if filePath, ok := tool.Input["filePath"].(string); ok {
+		return shortenPath(filePath)
+	}
+
+	if pattern, ok := tool.Input["pattern"].(string); ok {
+		return pattern
+	}
+
+	if query, ok := tool.Input["query"].(string); ok {
+		if len(query) > 40 {
+			return query[:37] + "..."
+		}
+		return query
+	}
+
+	if url, ok := tool.Input["url"].(string); ok {
+		return url
+	}
+
+	return ""
+}
+
+// shortenPath shortens a file path for display, keeping the filename and some context.
+func shortenPath(path string) string {
+	if len(path) <= 50 {
+		return path
+	}
+
+	// Try to show last 2-3 path components
+	parts := strings.Split(path, "/")
+	if len(parts) <= 3 {
+		return path
+	}
+
+	// Show .../<parent>/<file>
+	shortened := ".../" + strings.Join(parts[len(parts)-2:], "/")
+	if len(shortened) > 50 {
+		// Just show the filename
+		return ".../" + parts[len(parts)-1]
+	}
+	return shortened
 }
 
 // DisplayUnifiedTranscript displays a full transcript.
