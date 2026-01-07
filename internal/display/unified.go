@@ -122,6 +122,40 @@ func getStringField(m map[string]interface{}, key string) string {
 	return ""
 }
 
+// formatToolOutput formats tool output, with special handling for read-like tools.
+func formatToolOutput(toolName string, output string, mutedStyle lipgloss.Style) string {
+	if output == "" {
+		return ""
+	}
+
+	// For read tools, show a summary instead of full content
+	toolLower := strings.ToLower(toolName)
+	if toolLower == "read" || strings.Contains(toolLower, "read") {
+		lines := strings.Split(output, "\n")
+		lineCount := len(lines)
+		// Trim trailing empty lines from count
+		for lineCount > 0 && strings.TrimSpace(lines[lineCount-1]) == "" {
+			lineCount--
+		}
+		if lineCount > 5 {
+			return mutedStyle.Render(fmt.Sprintf("  (%d lines read)\n", lineCount))
+		}
+	}
+
+	// For short outputs, show the content
+	if len(output) < 200 {
+		return mutedStyle.Render(fmt.Sprintf("  Output: %s\n", output))
+	}
+
+	// For longer outputs, truncate
+	lines := strings.Split(output, "\n")
+	if len(lines) > 5 {
+		return mutedStyle.Render(fmt.Sprintf("  Output: (%d lines)\n", len(lines)))
+	}
+
+	return mutedStyle.Render(fmt.Sprintf("  Output: %s\n", output))
+}
+
 // formatUnifiedToolCall formats a tool call for display.
 func formatUnifiedToolCall(
 	tool transcript.UnifiedToolCall,
@@ -134,6 +168,10 @@ func formatUnifiedToolCall(
 		if formatter, ok := toolFormatters[tool.Name]; ok {
 			inputJSON, _ := json.Marshal(tool.Input)
 			if formatted := formatter(inputJSON, detailLevel); formatted != "" {
+				// Add output summary if available
+				if tool.Output != "" {
+					return formatted + formatToolOutput(tool.Name, tool.Output, mutedStyle)
+				}
 				return formatted
 			}
 		}
@@ -162,8 +200,8 @@ func formatUnifiedToolCall(
 				diff = strings.Join(lines[:20], "\n") + "\n... (truncated)"
 			}
 			sb.WriteString(mutedStyle.Render(fmt.Sprintf("  Diff:\n%s\n", diff)))
-		} else if tool.Output != "" && len(tool.Output) < 500 {
-			sb.WriteString(mutedStyle.Render(fmt.Sprintf("  Output: %s\n", tool.Output)))
+		} else if tool.Output != "" {
+			sb.WriteString(formatToolOutput(tool.Name, tool.Output, mutedStyle))
 		}
 
 		return sb.String()
