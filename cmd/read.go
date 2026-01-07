@@ -12,6 +12,7 @@ import (
 	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
 	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
+	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 	core_config "github.com/mattsolo1/grove-core/config"
 	"github.com/spf13/cobra"
 )
@@ -118,7 +119,7 @@ func newReadCmd() *cobra.Command {
 
 			// --- Handle OpenCode sessions specially ---
 			if sessionInfo.Provider == "opencode" {
-				return readOpenCodeSession(sessionInfo, detailLevel, jsonOutput)
+				return readOpenCodeSession(sessionInfo, detailLevel, jsonOutput, toolFormatters)
 			}
 
 			// --- Log Reading for Claude/Codex ---
@@ -177,7 +178,15 @@ func newReadCmd() *cobra.Command {
 				}
 				fmt.Println(string(jsonData))
 			} else {
-				// Human-readable output
+				// Human-readable output using unified normalizers
+
+				// Select appropriate normalizer based on provider
+				var normalizer transcript.Normalizer
+				if strings.Contains(sessionInfo.LogFilePath, "/.codex/") {
+					normalizer = transcript.NewCodexNormalizer()
+				} else {
+					normalizer = transcript.NewClaudeNormalizer()
+				}
 
 				// Create a new scanner to process the captured content
 				contentScanner := bufio.NewScanner(strings.NewReader(logContent))
@@ -188,13 +197,8 @@ func newReadCmd() *cobra.Command {
 				for contentScanner.Scan() {
 					line := contentScanner.Bytes()
 					if len(line) > 0 {
-						if strings.Contains(sessionInfo.LogFilePath, "/.codex/") {
-							display.DisplayCodexLogLine(line)
-						} else {
-							var entry display.TranscriptEntry
-							if err := json.Unmarshal(line, &entry); err == nil {
-								display.DisplayTranscriptEntry(entry, detailLevel, toolFormatters)
-							}
+						if entry, err := normalizer.NormalizeLine(line); err == nil && entry != nil {
+							display.DisplayUnifiedEntry(*entry, detailLevel, toolFormatters)
 						}
 					}
 				}
@@ -210,7 +214,7 @@ func newReadCmd() *cobra.Command {
 }
 
 // readOpenCodeSession handles reading and displaying OpenCode sessions.
-func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, jsonOutput bool) error {
+func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, jsonOutput bool, toolFormatters map[string]formatters.ToolFormatter) error {
 	assembler, err := opencode.NewAssembler()
 	if err != nil {
 		return fmt.Errorf("creating OpenCode assembler: %w", err)
@@ -221,14 +225,18 @@ func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, j
 		return fmt.Errorf("assembling OpenCode transcript: %w", err)
 	}
 
+	// Normalize to unified format
+	normalizer := transcript.NewOpenCodeNormalizer()
+	unifiedEntries := normalizer.NormalizeAll(entries)
+
 	if jsonOutput {
 		output := struct {
-			Entries     []opencode.TranscriptEntry `json:"entries"`
-			LogFilePath string                     `json:"log_file_path"`
-			Provider    string                     `json:"provider"`
-			SessionID   string                     `json:"session_id"`
+			Entries     []transcript.UnifiedEntry `json:"entries"`
+			LogFilePath string                    `json:"log_file_path"`
+			Provider    string                    `json:"provider"`
+			SessionID   string                    `json:"session_id"`
 		}{
-			Entries:     entries,
+			Entries:     unifiedEntries,
 			LogFilePath: sessionInfo.LogFilePath,
 			Provider:    "opencode",
 			SessionID:   sessionInfo.SessionID,
@@ -239,7 +247,7 @@ func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, j
 		}
 		fmt.Println(string(jsonData))
 	} else {
-		display.DisplayOpenCodeTranscript(entries, detailLevel)
+		display.DisplayUnifiedTranscript(unifiedEntries, detailLevel, toolFormatters)
 	}
 
 	return nil

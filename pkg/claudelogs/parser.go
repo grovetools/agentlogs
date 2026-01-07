@@ -26,7 +26,8 @@ func (p *Parser) ParseFileFromOffset(path string, offset int64) ([]transcript.Ex
 	return p.Parser.ParseFileFromOffset(path, offset)
 }
 
-// GetTranscriptPath returns the path to a transcript file for a given session ID
+// GetTranscriptPath returns the path to a transcript file for a given session ID.
+// This function assumes Claude as the provider for backward compatibility.
 func GetTranscriptPath(sessionID string) (string, error) {
-	return transcript.GetTranscriptPath(sessionID)
+	return transcript.GetTranscriptPath(sessionID, "claude")
 }

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
 	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
+	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 	"github.com/spf13/cobra"
 )
 
@@ -72,6 +72,15 @@ func streamOpenCodeSession(s *session.SessionInfo) error {
 		return fmt.Errorf("creating OpenCode assembler: %w", err)
 	}
 
+	toolFormatters := map[string]formatters.ToolFormatter{
+		"Write":     formatters.MakeWriteFormatter(0),
+		"Edit":      formatters.MakeWriteFormatter(0),
+		"Read":      formatters.FormatReadTool,
+		"TodoWrite": formatters.FormatTodoWriteTool,
+	}
+
+	normalizer := transcript.NewOpenCodeNormalizer()
+
 	// Track which messages we've already displayed
 	seenMessages := make(map[string]bool)
 
@@ -83,10 +92,13 @@ func streamOpenCodeSession(s *session.SessionInfo) error {
 
 	for _, entry := range entries {
 		seenMessages[entry.MessageID] = true
-		display.DisplayOpenCodeEntry(entry, "full")
+		unified := normalizer.NormalizeEntry(entry)
+		if unified != nil {
+			display.DisplayUnifiedEntry(*unified, "full", toolFormatters)
+		}
 	}
 
-	fmt.Println("\n--- Watching for new messages... ---\n")
+	fmt.Println("\n--- Watching for new messages... ---")
 
 	// Poll for new messages
 	for {
@@ -100,7 +112,10 @@ func streamOpenCodeSession(s *session.SessionInfo) error {
 		for _, entry := range entries {
 			if !seenMessages[entry.MessageID] {
 				seenMessages[entry.MessageID] = true
-				display.DisplayOpenCodeEntry(entry, "full")
+				unified := normalizer.NormalizeEntry(entry)
+				if unified != nil {
+					display.DisplayUnifiedEntry(*unified, "full", toolFormatters)
+				}
 			}
 		}
 	}
@@ -124,6 +139,14 @@ func tailLogFile(s *session.SessionInfo) error {
 		"TodoWrite": formatters.FormatTodoWriteTool,
 	}
 
+	// Select appropriate normalizer based on provider
+	var normalizer transcript.Normalizer
+	if strings.Contains(s.LogFilePath, "/.codex/") {
+		normalizer = transcript.NewCodexNormalizer()
+	} else {
+		normalizer = transcript.NewClaudeNormalizer()
+	}
+
 	lineCount := 0
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -143,14 +166,8 @@ func tailLogFile(s *session.SessionInfo) error {
 
 		lineCount++
 		if len(line) > 0 {
-			if strings.Contains(s.LogFilePath, "/.codex/") {
-				display.DisplayCodexLogLine(line)
-			} else {
-				var entry display.TranscriptEntry
-				if err := json.Unmarshal(line, &entry); err == nil {
-					// Use "full" detail level for streaming to see all tool details.
-					display.DisplayTranscriptEntry(entry, "full", toolFormatters)
-				}
+			if entry, normErr := normalizer.NormalizeLine(line); normErr == nil && entry != nil {
+				display.DisplayUnifiedEntry(*entry, "full", toolFormatters)
 			}
 		}
 	}

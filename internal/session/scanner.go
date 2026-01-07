@@ -218,6 +218,16 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				transcriptPath = metadata.TranscriptPath
 			}
 
+			// Determine provider based on path
+			provider := metadata.Provider
+			if provider == "" {
+				if strings.Contains(transcriptPath, "/.codex/") {
+					provider = "codex"
+				} else {
+					provider = "claude"
+				}
+			}
+
 			sessions = append(sessions, SessionInfo{
 				SessionID:   sessionID,
 				ProjectName: projectName,
@@ -227,6 +237,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				Jobs:        registryJobs,
 				LogFilePath: transcriptPath,
 				StartedAt:   metadata.StartedAt,
+				Provider:    provider,
 			})
 			continue // Skip to next log file
 		}
@@ -244,6 +255,11 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			if err != nil {
 				continue
 			}
+			// Determine provider from path
+			provider := "claude"
+			if strings.Contains(logPath, "/.codex/") {
+				provider = "codex"
+			}
 			sessions = append(sessions, SessionInfo{
 				SessionID:   strings.TrimSuffix(filepath.Base(logPath), ".jsonl"),
 				ProjectName: "unknown",
@@ -252,11 +268,17 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				Jobs:        []JobInfo{},
 				LogFilePath: logPath,
 				StartedAt:   stat.ModTime(),
+				Provider:    provider,
 			})
 			continue
 		}
 
 		projectPath, projectName, worktree, ecosystem := s.parseProjectPath(cwd)
+		// Determine provider from path
+		provider := "claude"
+		if strings.Contains(logPath, "/.codex/") {
+			provider = "codex"
+		}
 		sessions = append(sessions, SessionInfo{
 			SessionID:   sessionID,
 			ProjectName: projectName,
@@ -266,6 +288,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			Jobs:        jobs,
 			LogFilePath: logPath,
 			StartedAt:   startedAt,
+			Provider:    provider,
 		})
 	}
 
@@ -547,6 +570,12 @@ func (s *Scanner) scanForArchivedSessions() ([]SessionInfo, error) {
 
 			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
 
+			// Determine provider - archived sessions are typically Claude (the primary use case)
+			provider := metadata.Provider
+			if provider == "" {
+				provider = "claude"
+			}
+
 			archivedSessions = append(archivedSessions, SessionInfo{
 				SessionID:   metadata.ClaudeSessionID, // Use the native agent ID
 				ProjectName: projectName,
@@ -556,6 +585,7 @@ func (s *Scanner) scanForArchivedSessions() ([]SessionInfo, error) {
 				Jobs:        jobInfo,
 				LogFilePath: transcriptPath, // Point to the archived transcript
 				StartedAt:   metadata.StartedAt,
+				Provider:    provider,
 			})
 		}
 	}
