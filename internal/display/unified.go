@@ -10,10 +10,9 @@ import (
 	"github.com/mattsolo1/grove-core/tui/theme"
 )
 
-// Formatting constants for Claude Code-style output
+// Formatting constants for output
 const (
-	bulletChar  = "⏺"  // Main action bullet
-	treeChar    = "⎿"  // Tree connector for sub-content
+	treeChar = "⎿" // Tree connector for sub-content
 )
 
 // DisplayUnifiedEntry renders a single UnifiedEntry with consistent formatting.
@@ -22,11 +21,14 @@ func DisplayUnifiedEntry(
 	detailLevel string,
 	toolFormatters map[string]formatters.ToolFormatter,
 ) {
-	robotStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Violet)
+	robotToolStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Green)
+	robotTextStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.LightText)
 	userStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Yellow)
 	mutedStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.MutedText)
 
-	bullet := robotStyle.Render(bulletChar)
+	robotToolIcon := robotToolStyle.Render(theme.IconRobot)  // Green for tool calls
+	robotTextIcon := robotTextStyle.Render(theme.IconRobot)  // White for text responses
+	userIcon := userStyle.Render(theme.IconChevron)
 	tree := mutedStyle.Render(treeChar)
 
 	// For user messages, display text content and tool results
@@ -80,8 +82,7 @@ func DisplayUnifiedEntry(
 		}
 
 		if len(textParts) > 0 {
-			userBullet := userStyle.Render(bulletChar)
-			fmt.Printf("%s %s\n\n", userBullet, strings.Join(textParts, "\n"))
+			fmt.Printf("%s %s\n\n", userIcon, strings.Join(textParts, "\n"))
 		}
 		return
 	}
@@ -97,7 +98,7 @@ func DisplayUnifiedEntry(
 				text, _ = contentMap["text"].(string)
 			}
 			if text != "" {
-				fmt.Printf("%s %s\n\n", bullet, text)
+				fmt.Printf("%s %s\n\n", robotTextIcon, text)
 			}
 
 		case "tool_call":
@@ -120,7 +121,7 @@ func DisplayUnifiedEntry(
 
 			toolDisplay := formatUnifiedToolCall(toolCall, detailLevel, toolFormatters, mutedStyle)
 			if toolDisplay != "" {
-				fmt.Printf("%s %s\n", bullet, toolDisplay)
+				fmt.Printf("%s %s\n", robotToolIcon, toolDisplay)
 			}
 
 			// Show output with tree connector (for embedded output like OpenCode)
@@ -128,10 +129,13 @@ func DisplayUnifiedEntry(
 				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, mutedStyle)
 				if outputDisplay != "" {
 					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(outputDisplay))
-					fmt.Println() // Blank line after embedded output
 				}
 			}
-			// Don't add blank line here - tool_result entry will handle spacing
+			// For OpenCode, output is embedded so add blank line here
+			// For Claude/Codex, tool_result comes separately and adds its own spacing
+			if entry.Provider == "opencode" {
+				fmt.Println()
+			}
 
 		case "reasoning":
 			var text string
@@ -141,11 +145,13 @@ func DisplayUnifiedEntry(
 				text = getStringField(contentMap, "text")
 			}
 			if text != "" {
-				// Format thinking with "∴ Thinking…" header
-				fmt.Println(mutedStyle.Render("∴ Thinking…"))
+				// Format thinking with "∴ Thinking…" header in italic
+				italicMuted := mutedStyle.Italic(true)
+				fmt.Println(italicMuted.Render("∴ Thinking…"))
+				fmt.Println() // Blank line after header
 				for _, line := range strings.Split(text, "\n") {
 					if strings.TrimSpace(line) != "" {
-						fmt.Println(mutedStyle.Render("  " + line))
+						fmt.Println(italicMuted.Render("  " + line))
 					}
 				}
 				fmt.Println() // Blank line after thinking
@@ -235,19 +241,30 @@ func formatUnifiedToolCall(
 	toolFormatters map[string]formatters.ToolFormatter,
 	mutedStyle lipgloss.Style,
 ) string {
+	// Capitalize tool name for consistency
+	toolName := capitalizeFirst(tool.Name)
+
 	// Format as ToolName(key_arg) for consistency
 	keyArg := extractKeyArg(tool)
 
 	var display string
 	if keyArg != "" {
-		display = fmt.Sprintf("%s(%s)", tool.Name, keyArg)
+		display = fmt.Sprintf("%s(%s)", toolName, keyArg)
 	} else if tool.Title != "" {
-		display = fmt.Sprintf("%s(%s)", tool.Name, tool.Title)
+		display = fmt.Sprintf("%s(%s)", toolName, tool.Title)
 	} else {
-		display = tool.Name
+		display = toolName
 	}
 
 	return display
+}
+
+// capitalizeFirst capitalizes the first letter of a string.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // extractKeyArg extracts the most relevant argument for inline display.
