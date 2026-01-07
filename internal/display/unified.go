@@ -124,16 +124,13 @@ func DisplayUnifiedEntry(
 				fmt.Printf("%s %s\n", robotToolIcon, toolDisplay)
 			}
 
-			// Show output with tree connector (for embedded output like OpenCode)
+			// Show output with tree connector (for embedded output like OpenCode or merged Claude)
 			if toolCall.Output != "" {
 				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, mutedStyle)
 				if outputDisplay != "" {
 					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(outputDisplay))
 				}
-			}
-			// For OpenCode, output is embedded so add blank line here
-			// For Claude/Codex, tool_result comes separately and adds its own spacing
-			if entry.Provider == "opencode" {
+				// Add blank line after embedded output (OpenCode or merged Claude results)
 				fmt.Println()
 			}
 
