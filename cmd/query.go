@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -18,7 +17,6 @@ func newQueryCmd() *cobra.Command {
 		Short: "Query messages from a transcript",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
 			sessionID := args[0]
 			role, _ := cmd.Flags().GetString("role")
 			jsonOutput, _ := cmd.Flags().GetBool("json")
@@ -52,7 +50,7 @@ func newQueryCmd() *cobra.Command {
 					Field("role_filter", role).
 					Pretty(string(data)).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			} else {
 				// Build summary message
 				summaryMsg := fmt.Sprintf("Found %d messages", len(filtered))
@@ -67,7 +65,7 @@ func newQueryCmd() *cobra.Command {
 					Field("role_filter", role).
 					Pretty(summaryMsg).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 
 				for _, msg := range filtered {
 					ulogQuery.Info("Message").
@@ -77,7 +75,7 @@ func newQueryCmd() *cobra.Command {
 						Field("timestamp", msg.Timestamp).
 						Pretty(fmt.Sprintf("[%s] %s: %s\n", msg.Timestamp.Format("15:04:05"), msg.Role, msg.Content)).
 						PrettyOnly().
-						Log(ctx)
+						Emit()
 				}
 			}
 

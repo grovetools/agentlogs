@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,7 +24,6 @@ func newListCmd() *cobra.Command {
 		Short: "List available session transcripts",
 		Long:  "List available session transcripts, optionally filtered by project name",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
 			scanner := session.NewScanner()
 			sessions, err := scanner.Scan()
 			if err != nil {
@@ -35,7 +33,7 @@ func newListCmd() *cobra.Command {
 				ulogList.Info("No sessions found").
 					Pretty("No session transcripts found.").
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 				return nil
 			}
 
@@ -66,12 +64,12 @@ func newListCmd() *cobra.Command {
 						Field("project_filter", projectFilter).
 						Pretty(fmt.Sprintf("No session transcripts found for project matching '%s'\n", projectFilter)).
 						PrettyOnly().
-						Log(ctx)
+						Emit()
 				} else {
 					ulogList.Info("No sessions found").
 						Pretty("No session transcripts found").
 						PrettyOnly().
-						Log(ctx)
+						Emit()
 				}
 				return nil
 			}
@@ -91,7 +89,7 @@ func newListCmd() *cobra.Command {
 					Field("project_filter", projectFilter).
 					Pretty(string(data)).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			} else {
 				display.PrintSessionsTable(sessions, os.Stdout)
 			}

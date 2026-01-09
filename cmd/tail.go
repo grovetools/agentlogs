@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
@@ -17,7 +16,6 @@ func newTailCmd() *cobra.Command {
 		Short: "Tail and parse messages from a specific transcript",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
 			sessionID := args[0]
 
 			transcriptPath, err := transcript.GetTranscriptPathLegacy(sessionID)
@@ -42,7 +40,7 @@ func newTailCmd() *cobra.Command {
 				Field("total_messages", len(messages)).
 				Pretty(fmt.Sprintf("Showing last %d messages from session %s:\n\n", len(messages)-start, sessionID)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 
 			for i := start; i < len(messages); i++ {
 				msg := messages[i]
@@ -53,7 +51,7 @@ func newTailCmd() *cobra.Command {
 					Field("timestamp", msg.Timestamp).
 					Pretty(fmt.Sprintf("[%s] %s: %s\n", msg.Timestamp.Format("15:04:05"), msg.Role, msg.Content)).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			}
 
 			return nil

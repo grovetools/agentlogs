@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -161,7 +160,6 @@ func newReadCmd() *cobra.Command {
 
 			// --- Output ---
 			if jsonOutput {
-				ctx := context.Background()
 				provider := "claude"
 				if strings.Contains(sessionInfo.LogFilePath, "/.codex/") {
 					provider = "codex"
@@ -188,7 +186,7 @@ func newReadCmd() *cobra.Command {
 					Field("content_length", len(logContent)).
 					Pretty(string(jsonData)).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			} else {
 				// Human-readable output using unified normalizers
 
@@ -252,7 +250,6 @@ func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, j
 	unifiedEntries := normalizer.NormalizeAll(entries)
 
 	if jsonOutput {
-		ctx := context.Background()
 		output := struct {
 			Entries     []transcript.UnifiedEntry `json:"entries"`
 			LogFilePath string                    `json:"log_file_path"`
@@ -275,7 +272,7 @@ func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, j
 			Field("entry_count", len(unifiedEntries)).
 			Pretty(string(jsonData)).
 			PrettyOnly().
-			Log(ctx)
+			Emit()
 	} else {
 		display.DisplayUnifiedTranscript(unifiedEntries, detailLevel, toolFormatters)
 	}

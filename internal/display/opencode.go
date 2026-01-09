@@ -1,7 +1,6 @@
 package display
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -52,26 +51,24 @@ func DisplayOpenCodeEntry(entry opencode.TranscriptEntry, detailLevel string) {
 
 	// Display tool uses
 	if len(toolUses) > 0 {
-		ctx := context.Background()
 		role := robotStyle.Render(theme.IconRobot)
 		for _, toolUse := range toolUses {
 			ulogOpenCode.Info("Tool use").
 				Field("role", entry.Role).
 				Pretty(fmt.Sprintf("%s %s\n", role, toolUse)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 		if len(textParts) > 0 {
 			ulogOpenCode.Info("Tool text separator").
 				Pretty("\n").
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 	}
 
 	// Display text content
 	if len(textParts) > 0 {
-		ctx := context.Background()
 		var role string
 		if entry.Role == "assistant" {
 			role = robotStyle.Render(theme.IconRobot)
@@ -82,7 +79,7 @@ func DisplayOpenCodeEntry(entry opencode.TranscriptEntry, detailLevel string) {
 			Field("role", entry.Role).
 			Pretty(fmt.Sprintf("%s %s\n\n", role, strings.Join(textParts, "\n"))).
 			PrettyOnly().
-			Log(ctx)
+			Emit()
 	}
 }
 

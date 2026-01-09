@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -102,12 +101,11 @@ func streamOpenCodeSession(s *session.SessionInfo) error {
 		}
 	}
 
-	ctx := context.Background()
 	ulogStream.Info("Watching for new messages").
 		Field("session_id", s.SessionID).
 		Pretty("\n--- Watching for new messages... ---").
 		PrettyOnly().
-		Log(ctx)
+		Emit()
 
 	// Poll for new messages
 	for {

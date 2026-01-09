@@ -1,7 +1,6 @@
 package display
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -123,7 +122,6 @@ func DisplayTranscriptEntry(
 
 		// Display tool uses if any
 		if len(toolUses) > 0 {
-			ctx := context.Background()
 			robotStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Violet)
 			role := robotStyle.Render(theme.IconRobot)
 			for _, toolUse := range toolUses {
@@ -131,19 +129,18 @@ func DisplayTranscriptEntry(
 					Field("entry_type", entry.Type).
 					Pretty(fmt.Sprintf("%s %s\n", role, toolUse)).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			}
 			if textContent != "" {
 				ulogDisplay.Info("Tool text separator").
 					Pretty("\n").
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			}
 		}
 
 		// Display text content
 		if textContent != "" {
-			ctx := context.Background()
 			var role string
 			if entry.Type == "assistant" {
 				robotStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Violet)
@@ -156,7 +153,7 @@ func DisplayTranscriptEntry(
 				Field("entry_type", entry.Type).
 				Pretty(fmt.Sprintf("%s %s\n\n", role, textContent)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 	}
 }

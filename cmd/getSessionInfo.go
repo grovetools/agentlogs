@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -94,7 +93,6 @@ func newGetSessionInfoCmd() *cobra.Command {
 				return fmt.Errorf("failed to marshal session info to JSON: %w", err)
 			}
 
-			ctx := context.Background()
 			ulogGetSessionInfo.Info("Session info retrieved").
 				Field("agent_session_id", agentSessionID).
 				Field("provider", provider).
@@ -102,7 +100,7 @@ func newGetSessionInfoCmd() *cobra.Command {
 				Field("job", jobFilename).
 				Pretty(string(jsonData)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 			return nil
 		},
 	}

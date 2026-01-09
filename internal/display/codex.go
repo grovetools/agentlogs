@@ -1,7 +1,6 @@
 package display
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -40,7 +39,6 @@ func DisplayCodexLogLine(line []byte) {
 			}
 		}
 		if textContent != "" && !strings.Contains(textContent, "<environment_context>") {
-			ctx := context.Background()
 			roleDisplay := "User"
 			if role == "assistant" {
 				roleDisplay = "Agent"
@@ -49,34 +47,31 @@ func DisplayCodexLogLine(line []byte) {
 				Field("role", roleDisplay).
 				Pretty(fmt.Sprintf("%s: %s\n\n", roleDisplay, textContent)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 	case "agent_message":
 		if message, ok := payload["message"].(string); ok {
-			ctx := context.Background()
 			ulogCodex.Info("Agent message").
 				Field("role", "Agent").
 				Pretty(fmt.Sprintf("Agent: %s\n\n", message)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 	case "agent_reasoning":
 		if text, ok := payload["text"].(string); ok {
-			ctx := context.Background()
 			ulogCodex.Info("Reasoning").
 				Pretty(fmt.Sprintf("[Reasoning: %s]\n\n", text)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 	case "tool_code":
 		if code, ok := payload["code"].(string); ok {
-			ctx := context.Background()
 			lang, _ := payload["language"].(string)
 			ulogCodex.Info("Tool code").
 				Field("language", lang).
 				Pretty(fmt.Sprintf("[Tool (%s)]:\n%s\n\n", lang, code)).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 	}
 }

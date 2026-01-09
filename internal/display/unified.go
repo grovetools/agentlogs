@@ -1,7 +1,6 @@
 package display
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -59,7 +58,6 @@ func DisplayUnifiedEntry(
 					output = getStringField(contentMap, "output")
 				}
 				if output != "" {
-					ctx := context.Background()
 					hasToolResults = true
 					// For long outputs (like file reads), show a summary
 					lines := strings.Split(strings.TrimSpace(output), "\n")
@@ -69,7 +67,7 @@ func DisplayUnifiedEntry(
 							Field("line_count", len(lines)).
 							Pretty(fmt.Sprintf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))).
 							PrettyOnly().
-							Log(ctx)
+							Emit()
 					} else {
 						// Show short output directly
 						for i, line := range lines {
@@ -78,12 +76,12 @@ func DisplayUnifiedEntry(
 									ulog.Info("Tool result").
 										Pretty(fmt.Sprintf("  %s  %s\n", tree, line)).
 										PrettyOnly().
-										Log(ctx)
+										Emit()
 								} else {
 									ulog.Info("Tool result continuation").
 										Pretty(fmt.Sprintf("     %s\n", line)).
 										PrettyOnly().
-										Log(ctx)
+										Emit()
 								}
 							}
 						}
@@ -93,20 +91,18 @@ func DisplayUnifiedEntry(
 		}
 
 		if hasToolResults {
-			ctx := context.Background()
 			ulog.Info("Tool results separator").
 				Pretty("\n").
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 
 		if len(textParts) > 0 {
-			ctx := context.Background()
 			ulog.Info("User message").
 				Field("role", "user").
 				Pretty(fmt.Sprintf("%s %s\n\n", userIcon, strings.Join(textParts, "\n"))).
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 		return
 	}
@@ -122,12 +118,11 @@ func DisplayUnifiedEntry(
 				text, _ = contentMap["text"].(string)
 			}
 			if text != "" {
-				ctx := context.Background()
 				ulog.Info("Assistant text").
 					Field("role", "assistant").
 					Pretty(fmt.Sprintf("%s %s\n\n", robotTextIcon, text)).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			}
 
 		case "tool_call":
@@ -150,31 +145,29 @@ func DisplayUnifiedEntry(
 
 			toolDisplay := formatUnifiedToolCall(toolCall, detailLevel, toolFormatters, mutedStyle)
 			if toolDisplay != "" {
-				ctx := context.Background()
 				ulog.Info("Tool call").
 					Field("tool_name", toolCall.Name).
 					Field("tool_id", toolCall.ID).
 					Pretty(fmt.Sprintf("%s %s\n", robotToolIcon, toolDisplay)).
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			}
 
 			// Show output with tree connector (for embedded output like OpenCode or merged Claude)
 			if toolCall.Output != "" {
-				ctx := context.Background()
 				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, mutedStyle)
 				if outputDisplay != "" {
 					ulog.Info("Tool output").
 						Field("tool_name", toolCall.Name).
 						Pretty(fmt.Sprintf("  %s  %s\n", tree, mutedStyle.Render(outputDisplay))).
 						PrettyOnly().
-						Log(ctx)
+						Emit()
 				}
 				// Add blank line after embedded output (OpenCode or merged Claude results)
 				ulog.Info("Tool output separator").
 					Pretty("\n").
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			}
 
 		case "reasoning":
@@ -185,34 +178,33 @@ func DisplayUnifiedEntry(
 				text = getStringField(contentMap, "text")
 			}
 			if text != "" {
-				ctx := context.Background()
 				// Format thinking with "∴ Thinking…" header in italic
 				italicMuted := mutedStyle.Italic(true)
 				ulog.Info("Reasoning header").
 					Pretty(italicMuted.Render("∴ Thinking…") + "\n").
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 				ulog.Info("Reasoning spacer").
 					Pretty("\n").
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 				for _, line := range strings.Split(text, "\n") {
 					if strings.TrimSpace(line) != "" {
 						ulog.Info("Reasoning line").
 							Pretty(italicMuted.Render("  "+line) + "\n").
 							PrettyOnly().
-							Log(ctx)
+							Emit()
 					} else {
 						ulog.Info("Reasoning paragraph break").
 							Pretty("\n").
 							PrettyOnly().
-							Log(ctx)
+							Emit()
 					}
 				}
 				ulog.Info("Reasoning end spacer").
 					Pretty("\n").
 					PrettyOnly().
-					Log(ctx)
+					Emit()
 			}
 
 		case "tool_result":
@@ -224,7 +216,6 @@ func DisplayUnifiedEntry(
 				output = getStringField(contentMap, "output")
 			}
 			if output != "" {
-				ctx := context.Background()
 				lines := strings.Split(strings.TrimSpace(output), "\n")
 				if len(lines) > 5 {
 					// Compact summary for long output
@@ -232,7 +223,7 @@ func DisplayUnifiedEntry(
 						Field("line_count", len(lines)).
 						Pretty(fmt.Sprintf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))).
 						PrettyOnly().
-						Log(ctx)
+						Emit()
 				} else {
 					firstLine := true
 					for _, line := range lines {
@@ -241,23 +232,22 @@ func DisplayUnifiedEntry(
 								ulog.Info("Tool result").
 									Pretty(fmt.Sprintf("  %s  %s\n", tree, line)).
 									PrettyOnly().
-									Log(ctx)
+									Emit()
 								firstLine = false
 							} else {
 								ulog.Info("Tool result continuation").
 									Pretty(fmt.Sprintf("     %s\n", line)).
 									PrettyOnly().
-									Log(ctx)
+									Emit()
 							}
 						}
 					}
 				}
 			}
-			ctx := context.Background()
 			ulog.Info("Tool result separator").
 				Pretty("\n").
 				PrettyOnly().
-				Log(ctx)
+				Emit()
 		}
 	}
 }
