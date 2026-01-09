@@ -1,14 +1,18 @@
 package display
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
 	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 	"github.com/mattsolo1/grove-core/tui/theme"
 )
+
+var ulog = grovelogging.NewUnifiedLogger("grove-agent-logs.display")
 
 // Formatting constants for output
 const (
@@ -55,20 +59,31 @@ func DisplayUnifiedEntry(
 					output = getStringField(contentMap, "output")
 				}
 				if output != "" {
+					ctx := context.Background()
 					hasToolResults = true
 					// For long outputs (like file reads), show a summary
 					lines := strings.Split(strings.TrimSpace(output), "\n")
 					if len(lines) > 5 {
 						// Show compact summary
-						fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
+						ulog.Info("Tool result").
+							Field("line_count", len(lines)).
+							Pretty(fmt.Sprintf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))).
+							PrettyOnly().
+							Log(ctx)
 					} else {
 						// Show short output directly
 						for i, line := range lines {
 							if strings.TrimSpace(line) != "" {
 								if i == 0 {
-									fmt.Printf("  %s  %s\n", tree, line)
+									ulog.Info("Tool result").
+										Pretty(fmt.Sprintf("  %s  %s\n", tree, line)).
+										PrettyOnly().
+										Log(ctx)
 								} else {
-									fmt.Printf("     %s\n", line)
+									ulog.Info("Tool result continuation").
+										Pretty(fmt.Sprintf("     %s\n", line)).
+										PrettyOnly().
+										Log(ctx)
 								}
 							}
 						}
@@ -78,11 +93,20 @@ func DisplayUnifiedEntry(
 		}
 
 		if hasToolResults {
-			fmt.Println() // Blank line after tool results
+			ctx := context.Background()
+			ulog.Info("Tool results separator").
+				Pretty("\n").
+				PrettyOnly().
+				Log(ctx)
 		}
 
 		if len(textParts) > 0 {
-			fmt.Printf("%s %s\n\n", userIcon, strings.Join(textParts, "\n"))
+			ctx := context.Background()
+			ulog.Info("User message").
+				Field("role", "user").
+				Pretty(fmt.Sprintf("%s %s\n\n", userIcon, strings.Join(textParts, "\n"))).
+				PrettyOnly().
+				Log(ctx)
 		}
 		return
 	}
@@ -98,7 +122,12 @@ func DisplayUnifiedEntry(
 				text, _ = contentMap["text"].(string)
 			}
 			if text != "" {
-				fmt.Printf("%s %s\n\n", robotTextIcon, text)
+				ctx := context.Background()
+				ulog.Info("Assistant text").
+					Field("role", "assistant").
+					Pretty(fmt.Sprintf("%s %s\n\n", robotTextIcon, text)).
+					PrettyOnly().
+					Log(ctx)
 			}
 
 		case "tool_call":
@@ -121,17 +150,31 @@ func DisplayUnifiedEntry(
 
 			toolDisplay := formatUnifiedToolCall(toolCall, detailLevel, toolFormatters, mutedStyle)
 			if toolDisplay != "" {
-				fmt.Printf("%s %s\n", robotToolIcon, toolDisplay)
+				ctx := context.Background()
+				ulog.Info("Tool call").
+					Field("tool_name", toolCall.Name).
+					Field("tool_id", toolCall.ID).
+					Pretty(fmt.Sprintf("%s %s\n", robotToolIcon, toolDisplay)).
+					PrettyOnly().
+					Log(ctx)
 			}
 
 			// Show output with tree connector (for embedded output like OpenCode or merged Claude)
 			if toolCall.Output != "" {
+				ctx := context.Background()
 				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, mutedStyle)
 				if outputDisplay != "" {
-					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(outputDisplay))
+					ulog.Info("Tool output").
+						Field("tool_name", toolCall.Name).
+						Pretty(fmt.Sprintf("  %s  %s\n", tree, mutedStyle.Render(outputDisplay))).
+						PrettyOnly().
+						Log(ctx)
 				}
 				// Add blank line after embedded output (OpenCode or merged Claude results)
-				fmt.Println()
+				ulog.Info("Tool output separator").
+					Pretty("\n").
+					PrettyOnly().
+					Log(ctx)
 			}
 
 		case "reasoning":
@@ -142,18 +185,34 @@ func DisplayUnifiedEntry(
 				text = getStringField(contentMap, "text")
 			}
 			if text != "" {
+				ctx := context.Background()
 				// Format thinking with "∴ Thinking…" header in italic
 				italicMuted := mutedStyle.Italic(true)
-				fmt.Println(italicMuted.Render("∴ Thinking…"))
-				fmt.Println() // Blank line after header
+				ulog.Info("Reasoning header").
+					Pretty(italicMuted.Render("∴ Thinking…") + "\n").
+					PrettyOnly().
+					Log(ctx)
+				ulog.Info("Reasoning spacer").
+					Pretty("\n").
+					PrettyOnly().
+					Log(ctx)
 				for _, line := range strings.Split(text, "\n") {
 					if strings.TrimSpace(line) != "" {
-						fmt.Println(italicMuted.Render("  " + line))
+						ulog.Info("Reasoning line").
+							Pretty(italicMuted.Render("  "+line) + "\n").
+							PrettyOnly().
+							Log(ctx)
 					} else {
-						fmt.Println() // Preserve paragraph breaks
+						ulog.Info("Reasoning paragraph break").
+							Pretty("\n").
+							PrettyOnly().
+							Log(ctx)
 					}
 				}
-				fmt.Println() // Blank line after thinking
+				ulog.Info("Reasoning end spacer").
+					Pretty("\n").
+					PrettyOnly().
+					Log(ctx)
 			}
 
 		case "tool_result":
@@ -165,25 +224,40 @@ func DisplayUnifiedEntry(
 				output = getStringField(contentMap, "output")
 			}
 			if output != "" {
+				ctx := context.Background()
 				lines := strings.Split(strings.TrimSpace(output), "\n")
 				if len(lines) > 5 {
 					// Compact summary for long output
-					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
+					ulog.Info("Tool result summary").
+						Field("line_count", len(lines)).
+						Pretty(fmt.Sprintf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))).
+						PrettyOnly().
+						Log(ctx)
 				} else {
 					firstLine := true
 					for _, line := range lines {
 						if strings.TrimSpace(line) != "" {
 							if firstLine {
-								fmt.Printf("  %s  %s\n", tree, line)
+								ulog.Info("Tool result").
+									Pretty(fmt.Sprintf("  %s  %s\n", tree, line)).
+									PrettyOnly().
+									Log(ctx)
 								firstLine = false
 							} else {
-								fmt.Printf("     %s\n", line)
+								ulog.Info("Tool result continuation").
+									Pretty(fmt.Sprintf("     %s\n", line)).
+									PrettyOnly().
+									Log(ctx)
 							}
 						}
 					}
 				}
 			}
-			fmt.Println() // Blank line after tool result (even if empty)
+			ctx := context.Background()
+			ulog.Info("Tool result separator").
+				Pretty("\n").
+				PrettyOnly().
+				Log(ctx)
 		}
 	}
 }

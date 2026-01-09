@@ -1,10 +1,15 @@
 package display
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 )
+
+var ulogCodex = grovelogging.NewUnifiedLogger("grove-agent-logs.display.codex")
 
 // DisplayCodexLogLine parses and displays a Codex log line
 func DisplayCodexLogLine(line []byte) {
@@ -35,24 +40,43 @@ func DisplayCodexLogLine(line []byte) {
 			}
 		}
 		if textContent != "" && !strings.Contains(textContent, "<environment_context>") {
+			ctx := context.Background()
 			roleDisplay := "User"
 			if role == "assistant" {
 				roleDisplay = "Agent"
 			}
-			fmt.Printf("%s: %s\n\n", roleDisplay, textContent)
+			ulogCodex.Info("Message").
+				Field("role", roleDisplay).
+				Pretty(fmt.Sprintf("%s: %s\n\n", roleDisplay, textContent)).
+				PrettyOnly().
+				Log(ctx)
 		}
 	case "agent_message":
 		if message, ok := payload["message"].(string); ok {
-			fmt.Printf("Agent: %s\n\n", message)
+			ctx := context.Background()
+			ulogCodex.Info("Agent message").
+				Field("role", "Agent").
+				Pretty(fmt.Sprintf("Agent: %s\n\n", message)).
+				PrettyOnly().
+				Log(ctx)
 		}
 	case "agent_reasoning":
 		if text, ok := payload["text"].(string); ok {
-			fmt.Printf("[Reasoning: %s]\n\n", text)
+			ctx := context.Background()
+			ulogCodex.Info("Reasoning").
+				Pretty(fmt.Sprintf("[Reasoning: %s]\n\n", text)).
+				PrettyOnly().
+				Log(ctx)
 		}
 	case "tool_code":
 		if code, ok := payload["code"].(string); ok {
+			ctx := context.Background()
 			lang, _ := payload["language"].(string)
-			fmt.Printf("[Tool (%s)]:\n%s\n\n", lang, code)
+			ulogCodex.Info("Tool code").
+				Field("language", lang).
+				Pretty(fmt.Sprintf("[Tool (%s)]:\n%s\n\n", lang, code)).
+				PrettyOnly().
+				Log(ctx)
 		}
 	}
 }

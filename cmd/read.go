@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,8 +15,11 @@ import (
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
 	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
 	core_config "github.com/mattsolo1/grove-core/config"
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 	"github.com/spf13/cobra"
 )
+
+var ulogRead = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.read")
 
 func newReadCmd() *cobra.Command {
 	var jsonOutput bool
@@ -157,6 +161,7 @@ func newReadCmd() *cobra.Command {
 
 			// --- Output ---
 			if jsonOutput {
+				ctx := context.Background()
 				provider := "claude"
 				if strings.Contains(sessionInfo.LogFilePath, "/.codex/") {
 					provider = "codex"
@@ -176,7 +181,14 @@ func newReadCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("failed to marshal to JSON: %w", err)
 				}
-				fmt.Println(string(jsonData))
+				ulogRead.Info("Read log content").
+					Field("session_id", sessionInfo.SessionID).
+					Field("provider", provider).
+					Field("log_file_path", sessionInfo.LogFilePath).
+					Field("content_length", len(logContent)).
+					Pretty(string(jsonData)).
+					PrettyOnly().
+					Log(ctx)
 			} else {
 				// Human-readable output using unified normalizers
 
@@ -240,6 +252,7 @@ func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, j
 	unifiedEntries := normalizer.NormalizeAll(entries)
 
 	if jsonOutput {
+		ctx := context.Background()
 		output := struct {
 			Entries     []transcript.UnifiedEntry `json:"entries"`
 			LogFilePath string                    `json:"log_file_path"`
@@ -255,7 +268,14 @@ func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, j
 		if err != nil {
 			return fmt.Errorf("failed to marshal to JSON: %w", err)
 		}
-		fmt.Println(string(jsonData))
+		ulogRead.Info("Read OpenCode session").
+			Field("session_id", sessionInfo.SessionID).
+			Field("provider", "opencode").
+			Field("log_file_path", sessionInfo.LogFilePath).
+			Field("entry_count", len(unifiedEntries)).
+			Pretty(string(jsonData)).
+			PrettyOnly().
+			Log(ctx)
 	} else {
 		display.DisplayUnifiedTranscript(unifiedEntries, detailLevel, toolFormatters)
 	}

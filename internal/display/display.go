@@ -1,13 +1,17 @@
 package display
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 	"github.com/mattsolo1/grove-core/tui/theme"
 )
+
+var ulogDisplay = grovelogging.NewUnifiedLogger("grove-agent-logs.display.legacy")
 
 // TranscriptEntry represents a single entry in the transcript.
 type TranscriptEntry struct {
@@ -119,18 +123,27 @@ func DisplayTranscriptEntry(
 
 		// Display tool uses if any
 		if len(toolUses) > 0 {
+			ctx := context.Background()
 			robotStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Violet)
 			role := robotStyle.Render(theme.IconRobot)
 			for _, toolUse := range toolUses {
-				fmt.Printf("%s %s\n", role, toolUse)
+				ulogDisplay.Info("Tool use").
+					Field("entry_type", entry.Type).
+					Pretty(fmt.Sprintf("%s %s\n", role, toolUse)).
+					PrettyOnly().
+					Log(ctx)
 			}
 			if textContent != "" {
-				fmt.Println() // Add space between tools and text
+				ulogDisplay.Info("Tool text separator").
+					Pretty("\n").
+					PrettyOnly().
+					Log(ctx)
 			}
 		}
 
 		// Display text content
 		if textContent != "" {
+			ctx := context.Background()
 			var role string
 			if entry.Type == "assistant" {
 				robotStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Violet)
@@ -139,7 +152,11 @@ func DisplayTranscriptEntry(
 				userStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Yellow)
 				role = userStyle.Render(theme.IconLightbulb)
 			}
-			fmt.Printf("%s %s\n\n", role, textContent)
+			ulogDisplay.Info("Text content").
+				Field("entry_type", entry.Type).
+				Pretty(fmt.Sprintf("%s %s\n\n", role, textContent)).
+				PrettyOnly().
+				Log(ctx)
 		}
 	}
 }

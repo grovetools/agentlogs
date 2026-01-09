@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,9 +10,12 @@ import (
 	"strings"
 
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 	"github.com/mattsolo1/grove-core/pkg/sessions"
 	"github.com/spf13/cobra"
 )
+
+var ulogGetSessionInfo = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.getSessionInfo")
 
 func newGetSessionInfoCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -90,7 +94,15 @@ func newGetSessionInfoCmd() *cobra.Command {
 				return fmt.Errorf("failed to marshal session info to JSON: %w", err)
 			}
 
-			fmt.Println(string(jsonData))
+			ctx := context.Background()
+			ulogGetSessionInfo.Info("Session info retrieved").
+				Field("agent_session_id", agentSessionID).
+				Field("provider", provider).
+				Field("plan", planName).
+				Field("job", jobFilename).
+				Pretty(string(jsonData)).
+				PrettyOnly().
+				Log(ctx)
 			return nil
 		},
 	}

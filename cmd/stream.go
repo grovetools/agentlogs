@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -13,8 +14,11 @@ import (
 	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
 	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 	"github.com/spf13/cobra"
 )
+
+var ulogStream = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.stream")
 
 func newStreamCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -98,7 +102,12 @@ func streamOpenCodeSession(s *session.SessionInfo) error {
 		}
 	}
 
-	fmt.Println("\n--- Watching for new messages... ---")
+	ctx := context.Background()
+	ulogStream.Info("Watching for new messages").
+		Field("session_id", s.SessionID).
+		Pretty("\n--- Watching for new messages... ---").
+		PrettyOnly().
+		Log(ctx)
 
 	// Poll for new messages
 	for {

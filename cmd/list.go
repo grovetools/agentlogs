@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,8 +10,11 @@ import (
 
 	"github.com/mattsolo1/grove-agent-logs/internal/display"
 	"github.com/mattsolo1/grove-agent-logs/internal/session"
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 	"github.com/spf13/cobra"
 )
+
+var ulogList = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.list")
 
 func newListCmd() *cobra.Command {
 	var jsonOutput bool
@@ -21,13 +25,17 @@ func newListCmd() *cobra.Command {
 		Short: "List available session transcripts",
 		Long:  "List available session transcripts, optionally filtered by project name",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
 			scanner := session.NewScanner()
 			sessions, err := scanner.Scan()
 			if err != nil {
 				return fmt.Errorf("failed to scan for sessions: %w", err)
 			}
 			if len(sessions) == 0 {
-				fmt.Println("No session transcripts found.")
+				ulogList.Info("No sessions found").
+					Pretty("No session transcripts found.").
+					PrettyOnly().
+					Log(ctx)
 				return nil
 			}
 
@@ -54,9 +62,16 @@ func newListCmd() *cobra.Command {
 
 			if len(sessions) == 0 {
 				if projectFilter != "" {
-					fmt.Printf("No session transcripts found for project matching '%s'\n", projectFilter)
+					ulogList.Info("No sessions found").
+						Field("project_filter", projectFilter).
+						Pretty(fmt.Sprintf("No session transcripts found for project matching '%s'\n", projectFilter)).
+						PrettyOnly().
+						Log(ctx)
 				} else {
-					fmt.Println("No session transcripts found")
+					ulogList.Info("No sessions found").
+						Pretty("No session transcripts found").
+						PrettyOnly().
+						Log(ctx)
 				}
 				return nil
 			}
@@ -71,7 +86,12 @@ func newListCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("failed to marshal sessions to JSON: %w", err)
 				}
-				fmt.Println(string(data))
+				ulogList.Info("Session list").
+					Field("session_count", len(sessions)).
+					Field("project_filter", projectFilter).
+					Pretty(string(data)).
+					PrettyOnly().
+					Log(ctx)
 			} else {
 				display.PrintSessionsTable(sessions, os.Stdout)
 			}

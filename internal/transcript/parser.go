@@ -2,12 +2,17 @@ package transcript
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 )
+
+var ulog = grovelogging.NewUnifiedLogger("grove-agent-logs.transcript.parser")
 
 // TranscriptEntry represents a single entry in the Claude JSONL transcript
 type TranscriptEntry struct {
@@ -138,7 +143,13 @@ func (p *Parser) parseFromReader(file *os.File, startOffset int64) ([]ExtractedM
 		var entry TranscriptEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
 			// Log but don't fail on individual line errors
-			fmt.Printf("Warning: Failed to parse line %d: %v\n", lineNum, err)
+			ctx := context.Background()
+			ulog.Warn("Failed to parse line").
+				Field("line_number", lineNum).
+				Err(err).
+				Pretty(fmt.Sprintf("Warning: Failed to parse line %d: %v\n", lineNum, err)).
+				PrettyOnly().
+				Log(ctx)
 			continue
 		}
 
@@ -187,7 +198,13 @@ func (p *Parser) parseCodexFromReader(file *os.File, startOffset int64) ([]Extra
 		var entry CodexLogEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
 			// Log but don't fail on individual line errors
-			fmt.Printf("Warning: Failed to parse Codex line %d: %v\n", lineNum, err)
+			ctx := context.Background()
+			ulog.Warn("Failed to parse Codex line").
+				Field("line_number", lineNum).
+				Err(err).
+				Pretty(fmt.Sprintf("Warning: Failed to parse Codex line %d: %v\n", lineNum, err)).
+				PrettyOnly().
+				Log(ctx)
 			continue
 		}
 

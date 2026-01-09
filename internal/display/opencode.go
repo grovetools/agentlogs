@@ -1,14 +1,18 @@
 package display
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
+	grovelogging "github.com/mattsolo1/grove-core/logging"
 	"github.com/mattsolo1/grove-core/tui/theme"
 )
+
+var ulogOpenCode = grovelogging.NewUnifiedLogger("grove-agent-logs.display.opencode")
 
 // DisplayOpenCodeEntry formats and displays an OpenCode transcript entry.
 func DisplayOpenCodeEntry(entry opencode.TranscriptEntry, detailLevel string) {
@@ -48,24 +52,37 @@ func DisplayOpenCodeEntry(entry opencode.TranscriptEntry, detailLevel string) {
 
 	// Display tool uses
 	if len(toolUses) > 0 {
+		ctx := context.Background()
 		role := robotStyle.Render(theme.IconRobot)
 		for _, toolUse := range toolUses {
-			fmt.Printf("%s %s\n", role, toolUse)
+			ulogOpenCode.Info("Tool use").
+				Field("role", entry.Role).
+				Pretty(fmt.Sprintf("%s %s\n", role, toolUse)).
+				PrettyOnly().
+				Log(ctx)
 		}
 		if len(textParts) > 0 {
-			fmt.Println() // Add space between tools and text
+			ulogOpenCode.Info("Tool text separator").
+				Pretty("\n").
+				PrettyOnly().
+				Log(ctx)
 		}
 	}
 
 	// Display text content
 	if len(textParts) > 0 {
+		ctx := context.Background()
 		var role string
 		if entry.Role == "assistant" {
 			role = robotStyle.Render(theme.IconRobot)
 		} else if entry.Role == "user" {
 			role = userStyle.Render(theme.IconLightbulb)
 		}
-		fmt.Printf("%s %s\n\n", role, strings.Join(textParts, "\n"))
+		ulogOpenCode.Info("Text content").
+			Field("role", entry.Role).
+			Pretty(fmt.Sprintf("%s %s\n\n", role, strings.Join(textParts, "\n"))).
+			PrettyOnly().
+			Log(ctx)
 	}
 }
 
