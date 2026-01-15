@@ -174,7 +174,7 @@ func FormatTodoWriteTool(input json.RawMessage, detailLevel string) string {
 	for _, item := range data.Todos {
 		checkbox := "[ ]"
 		if item.Status == "completed" {
-			checkbox = "[✓]"
+			checkbox = "[*]"
 		} else if item.Status == "in_progress" {
 			checkbox = "[→]"
 		}
