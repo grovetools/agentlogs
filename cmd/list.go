@@ -24,6 +24,11 @@ func newListCmd() *cobra.Command {
 		Short: "List available session transcripts",
 		Long:  "List available session transcripts, optionally filtered by project name",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// For JSON output, redirect all logging to stderr to keep stdout clean
+			if jsonOutput {
+				grovelogging.SetGlobalOutput(os.Stderr)
+			}
+
 			scanner := session.NewScanner()
 			sessions, err := scanner.Scan()
 			if err != nil {
@@ -84,12 +89,8 @@ func newListCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("failed to marshal sessions to JSON: %w", err)
 				}
-				ulogList.Info("Session list").
-					Field("session_count", len(sessions)).
-					Field("project_filter", projectFilter).
-					Pretty(string(data)).
-					PrettyOnly().
-					Emit()
+				// Write JSON directly to stdout for machine-readable output
+				fmt.Fprintln(os.Stdout, string(data))
 			} else {
 				display.PrintSessionsTable(sessions, os.Stdout)
 			}
