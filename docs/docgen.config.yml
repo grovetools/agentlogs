@@ -1,5 +1,5 @@
 enabled: true
-title: Grove Claude Logs
+title: agentlogs
 description: A CLI tool and Go library for parsing, monitoring, and analyzing Claude AI session transcripts.
 category: Developer Tools
 settings:
