@@ -1,5 +1,6 @@
-name: grove-agent-logs
+name: agentlogs
 description: Agent transcript log parsing and monitoring
+managed: true
 binary:
   name: aglogs
   path: ./bin/aglogs
