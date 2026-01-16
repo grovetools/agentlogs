@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mattsolo1/grove-agent-logs/internal/display"
-	"github.com/mattsolo1/grove-agent-logs/internal/session"
-	grovelogging "github.com/mattsolo1/grove-core/logging"
+	"github.com/grovetools/agentlogs/internal/display"
+	"github.com/grovetools/agentlogs/internal/session"
+	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
 )
 

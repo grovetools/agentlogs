@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mattsolo1/grove-core/pkg/models"
+	"github.com/grovetools/core/pkg/models"
 	"gopkg.in/yaml.v3"
 )
 

@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
-	"github.com/mattsolo1/grove-core/tui/theme"
+	"github.com/grovetools/agentlogs/internal/opencode"
+	"github.com/grovetools/core/tui/theme"
 )
 
 // DisplayOpenCodeEntry formats and displays an OpenCode transcript entry.

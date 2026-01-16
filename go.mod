@@ -1,12 +1,12 @@
-module github.com/mattsolo1/grove-agent-logs
+module github.com/grovetools/agentlogs
 
 go 1.24.4
 
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/invopop/jsonschema v0.13.0
-	github.com/mattsolo1/grove-core v0.5.0
-	github.com/mattsolo1/grove-tend v0.4.0
+	github.com/grovetools/core v0.0.1
+	github.com/grovetools/tend v0.0.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
 	gopkg.in/yaml.v3 v3.0.1

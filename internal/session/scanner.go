@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsolo1/grove-core/config"
-	"github.com/mattsolo1/grove-core/logging"
-	"github.com/mattsolo1/grove-core/pkg/sessions"
-	"github.com/mattsolo1/grove-core/pkg/workspace"
+	"github.com/grovetools/core/config"
+	"github.com/grovetools/core/logging"
+	"github.com/grovetools/core/pkg/sessions"
+	"github.com/grovetools/core/pkg/workspace"
 )
 
 // Scanner is responsible for finding and parsing session transcript logs.

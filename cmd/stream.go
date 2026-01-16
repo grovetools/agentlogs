@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattsolo1/grove-agent-logs/internal/display"
-	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
-	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
-	"github.com/mattsolo1/grove-agent-logs/internal/session"
-	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
-	grovelogging "github.com/mattsolo1/grove-core/logging"
+	"github.com/grovetools/agentlogs/internal/display"
+	"github.com/grovetools/agentlogs/internal/formatters"
+	"github.com/grovetools/agentlogs/internal/opencode"
+	"github.com/grovetools/agentlogs/internal/session"
+	"github.com/grovetools/agentlogs/internal/transcript"
+	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
 )
 

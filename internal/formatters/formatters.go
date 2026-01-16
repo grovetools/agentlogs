@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattsolo1/grove-core/tui/theme"
+	"github.com/grovetools/core/tui/theme"
 )
 
 // ToolFormatter is a function that formats the input of a tool call.

@@ -1,7 +1,7 @@
 package transcript
 
 import (
-	"github.com/mattsolo1/grove-agent-logs/internal/opencode"
+	"github.com/grovetools/agentlogs/internal/opencode"
 )
 
 // OpenCodeNormalizer normalizes OpenCode transcript entries.

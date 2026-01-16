@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mattsolo1/grove-core/pkg/models"
+	"github.com/grovetools/core/pkg/models"
 )
 
 // SessionWithProvider wraps a session with its provider info

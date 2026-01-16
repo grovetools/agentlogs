@@ -1,7 +1,7 @@
 package claudelogs
 
 import (
-	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
+	"github.com/grovetools/agentlogs/internal/transcript"
 )
 
 // Parser wraps the internal transcript parser

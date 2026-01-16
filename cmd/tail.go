@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
-	grovelogging "github.com/mattsolo1/grove-core/logging"
+	"github.com/grovetools/agentlogs/internal/transcript"
+	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
 )
 

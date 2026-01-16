@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mattsolo1/grove-agent-logs/internal/session"
-	grovelogging "github.com/mattsolo1/grove-core/logging"
-	"github.com/mattsolo1/grove-core/pkg/sessions"
+	"github.com/grovetools/agentlogs/internal/session"
+	grovelogging "github.com/grovetools/core/logging"
+	"github.com/grovetools/core/pkg/sessions"
 	"github.com/spf13/cobra"
 )
 

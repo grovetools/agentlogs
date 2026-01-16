@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattsolo1/grove-agent-logs/internal/formatters"
-	"github.com/mattsolo1/grove-agent-logs/internal/transcript"
-	"github.com/mattsolo1/grove-core/tui/theme"
+	"github.com/grovetools/agentlogs/internal/formatters"
+	"github.com/grovetools/agentlogs/internal/transcript"
+	"github.com/grovetools/core/tui/theme"
 )
 
 // Formatting constants for output

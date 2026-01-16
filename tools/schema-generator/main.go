@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/invopop/jsonschema"
-	"github.com/mattsolo1/grove-agent-logs/config"
+	"github.com/grovetools/agentlogs/config"
 )
 
 func main() {

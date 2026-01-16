@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/mattsolo1/grove-agent-logs/internal/session"
+	"github.com/grovetools/agentlogs/internal/session"
 )
 
 // PrintSessionsTable prints a list of sessions in a formatted table.
