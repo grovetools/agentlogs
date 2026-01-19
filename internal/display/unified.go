@@ -1,6 +1,7 @@
 package display
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -234,6 +235,7 @@ func formatToolOutput(toolName string, output string, mutedStyle lipgloss.Style)
 
 // formatUnifiedToolCall formats a tool call for display.
 // Uses consistent ToolName(arg) format for all tools.
+// For Edit/Write tools, uses specialized formatters to show diffs.
 func formatUnifiedToolCall(
 	tool transcript.UnifiedToolCall,
 	detailLevel string,
@@ -242,6 +244,17 @@ func formatUnifiedToolCall(
 ) string {
 	// Capitalize tool name for consistency
 	toolName := capitalizeFirst(tool.Name)
+
+	// Check if we have a specialized formatter for this tool
+	if formatter, ok := toolFormatters[tool.Name]; ok {
+		// Marshal the input back to JSON for the formatter
+		if inputJSON, err := json.Marshal(tool.Input); err == nil {
+			formatted := formatter(inputJSON, detailLevel)
+			if formatted != "" {
+				return strings.TrimSuffix(formatted, "\n")
+			}
+		}
+	}
 
 	// Format as ToolName(key_arg) for consistency
 	keyArg := extractKeyArg(tool)
