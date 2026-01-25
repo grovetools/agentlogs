@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -19,6 +20,12 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	if len(allSessions) == 0 {
 		return nil, fmt.Errorf("no sessions found")
 	}
+
+	// Sort sessions by started time, most recent first
+	// This ensures we match the most recent session when multiple sessions have the same job
+	sort.Slice(allSessions, func(i, j int) bool {
+		return allSessions[i].StartedAt.After(allSessions[j].StartedAt)
+	})
 
 	// Strategy 1: Check if spec is a direct log file path
 	absSpec, err := filepath.Abs(spec)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/grovetools/agentlogs/internal/session"
@@ -57,6 +58,12 @@ func newGetSessionInfoCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("failed to scan for sessions: %w", err)
 				}
+
+				// Sort sessions by started time, most recent first
+				// This ensures we match the most recent session when multiple sessions have the same job
+				sort.Slice(allSessions, func(i, j int) bool {
+					return allSessions[i].StartedAt.After(allSessions[j].StartedAt)
+				})
 
 				for _, s := range allSessions {
 					for _, job := range s.Jobs {
