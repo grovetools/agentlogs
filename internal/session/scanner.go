@@ -12,6 +12,7 @@ import (
 
 	"github.com/grovetools/core/config"
 	"github.com/grovetools/core/logging"
+	"github.com/grovetools/core/pkg/paths"
 	"github.com/grovetools/core/pkg/sessions"
 	"github.com/grovetools/core/pkg/workspace"
 )
@@ -24,18 +25,13 @@ func NewScanner() *Scanner {
 	return &Scanner{}
 }
 
-// loadSessionRegistry scans the ~/.grove/hooks/sessions directory and builds a map
+// loadSessionRegistry scans the session registry directory and builds a map
 // of native agent session IDs to their structured metadata.
 func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, error) {
 	logger := logging.NewLogger("aglogs-registry")
 	registryMap := make(map[string]sessions.SessionMetadata)
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		logger.WithError(err).Error("Failed to get user home directory")
-		return nil, err
-	}
 
-	sessionsDir := filepath.Join(homeDir, ".grove", "hooks", "sessions")
+	sessionsDir := filepath.Join(paths.StateDir(), "hooks", "sessions")
 	logger.WithField("sessions_dir", sessionsDir).Debug("Scanning sessions directory")
 
 	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
