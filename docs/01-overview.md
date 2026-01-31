@@ -1,38 +1,39 @@
-# Grove Claude Logs
+`aglogs` (Agent Logs) is a command-line tool for parsing, monitoring, and analyzing transcripts from local AI agents. It normalizes proprietary log formats from multiple providers into a unified structure, enabling consistent inspection and integration with the Grove ecosystem.
 
-`grove-claude-logs` (`clogs`) is a command-line tool and Go library for parsing, monitoring, and analyzing local Claude AI session transcripts. It provides a structured way to inspect, query, and understand interaction history with Claude, particularly within workflows orchestrated by `grove-flow`.
+## Core Mechanisms
 
-<!-- placeholder for animated gif -->
+**Unified Normalization**: The tool reads provider-specific log formats (typically JSONL) and converts them into a standard `UnifiedEntry` structure. This normalization handles differences in timestamp formatting, role definitions, and tool call representations (e.g., merging Claude's separate tool use and result events).
 
-### Key Features
+**Discovery Strategies**: `aglogs` locates session transcripts using a tiered approach:
+1.  **Direct Path**: Accepts direct file paths to log files.
+2.  **Session Registry**: Queries the `grove hooks` database (`~/.local/state/grove/hooks/sessions/`) to resolve Grove Job IDs to native agent session IDs.
+3.  **Filesystem Scanning**: Scans default storage directories for supported providers to index available sessions.
 
-*   **Session Listing and Filtering**: Lists session transcripts and filters them by project, worktree, or job name.
-*   **Targeted Log Reading**: Reads the conversation log for a specified `grove-flow` job.
-*   **Message Querying**: Filters messages within a session by role (`user` or `assistant`) and provides JSON output.
-*   **Real-Time Monitoring**: Provides a Go library for monitoring transcript files for new messages.
-*   **Grove Integration**: Discovers transcripts and extracts metadata related to Grove projects, worktrees, and plans.
+**Output Formatting**:
+*   **Human-Readable**: Renders formatted text with syntax highlighting, diff views for file edits, and distinct icons for tools vs. conversation.
+*   **JSON**: Outputs raw structured data for machine consumption.
 
-## How It Works
+## Supported Providers
 
-The `clogs` tool functions by scanning the `~/.claude/projects/` directory for `*.jsonl` files, where each file represents a session transcript. It parses these files line by line to extract messages and metadata, including the session ID and the original working directory. `grove-flow` job associations are determined by parsing user prompts within the transcript that match the execution pattern of an agent job, allowing `clogs` to link segments of a conversation to specific tasks in a plan.
+`aglogs` supports the following local agent runtimes:
 
-## Ecosystem Integration
+*   **Claude Code**: Scans `~/.claude/projects/` for project-scoped JSONL transcripts.
+*   **Codex**: Scans `~/.codex/sessions/` for session logs.
+*   **OpenCode**: Assembles fragmented message and part files from `~/.local/share/opencode/storage/`.
 
-`clogs` is an observability component within the Grove ecosystem that provides data on LLM agent behavior.
+## Integration with Grove Flow
 
-*   **`grove-flow`**: `clogs` is used to review the execution of `grove-flow` plans. Since agents write their interactions to Claude transcripts, `clogs` allows a developer to debug a plan by reading the conversation that occurred for a specific job (e.g., `clogs read my-plan/01-setup.md`).
-*   **`grove-hooks`**: `clogs` can act as a data source for the wider ecosystem. Its ability to parse and monitor transcripts can produce structured events about LLM interactions. These events can be published via `grove-hooks` to be consumed by other tools, such as dashboards or automated analysis agents.
+`aglogs` serves as the observability layer for `flow` orchestrations.
 
-## Installation
+**Live Streaming**: The `flow plan status` TUI executes `aglogs stream` to display real-time output from running agents directly within the terminal interface. This allows monitoring of headless and interactive agents without attaching to their specific processes.
 
-Install via the Grove meta-CLI:
-```bash
-grove install claude-logs
-```
+**Transcript Archival**: Upon job completion, `flow` executes `aglogs read` to retrieve the full session history. This content is appended to the job's Markdown file (e.g., `01-impl.md`), preserving the chain of thought and execution history alongside the task definition.
 
-Verify installation:
-```bash
-clogs version
-```
+**Session Resumption**: When resuming an interactive job, `flow` uses `aglogs get-session-info` to look up the native agent session ID associated with the job, enabling the agent to continue context from the previous run.
 
-Requires the `grove` meta-CLI. See the [Grove Installation Guide](https://github.com/mattsolo1/grove-meta/blob/main/docs/02-installation.md) if you don't have it installed.
+## Features
+
+*   **`aglogs list`**: Indexes and displays available sessions across all providers. Supports filtering by project or job name.
+*   **`aglogs read`**: Outputs the full log for a specific session ID, Job ID, or file path.
+*   **`aglogs stream`**: Tails a live log file, rendering new entries as they are written.
+*   **`aglogs query`**: Filters messages within a transcript by role (e.g., `--role user`) or content.

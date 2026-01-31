@@ -1,1 +1,11 @@
 *.go
+
+@a:grovetools:flow @grep: "aglogs"
+
+@a:grovetools:hooks/README.md
+@a:grovetools:nav/README.md
+@a:grovetools:grove/README.md
+@a:grovetools:flow/README.md
+@a:grovetools:cx/README.md
+@a:grovetools:nb/README.md
+@a:grovetools:docgen/README.md
