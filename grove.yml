@@ -1,9 +1,0 @@
-name: agentlogs
-description: Agent transcript log parsing and monitoring
-managed: true
-binary:
-  name: aglogs
-  path: ./bin/aglogs
-
-context:
-  default_rules_path: .cx/dev-no-tests.rules
