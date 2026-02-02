@@ -23,11 +23,15 @@ LDFLAGS = -ldflags="\
 -X '$(VERSION_PKG).Branch=$(GIT_BRANCH)' \
 -X '$(VERSION_PKG).BuildDate=$(BUILD_DATE)'"
 
-.PHONY: all build test clean fmt vet lint run check dev build-all generate generate-docs help
+.PHONY: all build test clean fmt vet lint run check dev build-all schema generate generate-docs help
 
 all: build
 
-build:
+schema:
+	@echo "Generating JSON schema..."
+	@go generate ./config
+
+build: schema
 	@mkdir -p $(BIN_DIR)
 	@echo "Building $(BINARY_NAME) version $(VERSION)..."
 	@go build $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME) .
@@ -110,6 +114,7 @@ test-e2e: build
 help:
 	@echo "Available targets:"
 	@echo "  make build       - Build the binary"
+	@echo "  make schema      - Generate JSON schema"
 	@echo "  make test        - Run tests"
 	@echo "  make clean       - Clean build artifacts"
 	@echo "  make fmt         - Format code"
@@ -120,6 +125,5 @@ help:
 	@echo "  make dev         - Build with race detector"
 	@echo "  make generate    - Run go generate"
 	@echo "  make build-all   - Build for multiple platforms"
-	@echo "  make generate-docs     - Generate documentation using docgen"
-	@echo "  make test-e2e ARGS=...- Run E2E test runner binary"
-	@echo "  make test-e2e ARGS=...- Run E2E tests (e.g., ARGS=\"run -i clogs-basic-generation\")"
+	@echo "  make generate-docs - Generate documentation using docgen"
+	@echo "  make test-e2e ARGS=.. - Run E2E tests (e.g., ARGS=\"run -i clogs-basic-generation\")"

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/mattsolo1/grove-agent-logs/config/config",
+  "$id": "https://github.com/grovetools/agentlogs/config/config",
   "$defs": {
     "TranscriptConfig": {
       "properties": {
