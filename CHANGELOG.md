@@ -1,3 +1,59 @@
+## v0.6.0 (2026-02-02)
+
+Session management has been improved with XDG-compliant path resolution (26193ce), moving away from hardcoded paths for better system integration. Additionally, session resolution logic has been fixed to correctly prioritize the most recent session when multiple sessions exist for the same job (5f61c43).
+
+Visual improvements include properly enabling tool formatters for Edit/Write operations (083762a), ensuring diffs are displayed correctly in the unified view. Internal configuration has been migrated from YAML to TOML (efe4741), and the MIT License has been formally added (77c9f40).
+
+### Bug Fixes
+- Match the most recent session when multiple sessions have the same job (5f61c43)
+- Enable tool formatters in unified display for Edit/Write diffs (083762a)
+- Update VERSION_PKG to grovetools/core path (507a782)
+
+### Refactoring
+- Use XDG-compliant paths for session scanning (26193ce)
+- Update docgen title to match package name (1a93086)
+
+### Documentation
+- Update readme/overview (bdb0c6f)
+- Add concept lookup instructions to CLAUDE.md (4a5845e)
+- Add MIT License (77c9f40)
+
+### Chores
+- Update go.mod for grovetools migration (55b910e)
+- Migrate grove.yml to grove.toml (efe4741)
+- Move README template to notebook (e8a98ee)
+- Remove docgen files from repo (4d9cc82)
+- Move docs.rules to .cx/ directory (2c1aeac)
+- Update docs.json (ba0f82e)
+- Update docs/makefile (208cd1b)
+- Restore release workflow (78726c7)
+
+### File Changes
+```
+ .cx/docs.rules                | 11 +++++++++
+ .github/workflows/release.yml | 51 ++++++++++++++++++++++++++++++++++++++++++
+ CLAUDE.md                     | 15 ++++++++++++-
+ LICENSE                       | 21 +++++++++++++++++
+ Makefile                      | 16 ++++++++-----
+ README.md                     | 52 ++++++++++++++++++++++---------------------
+ cmd/getSessionInfo.go         |  7 ++++++
+ config/aglogs.schema.json     |  2 +-
+ docs/01-overview.md           | 51 +++++++++++++++++++++---------------------
+ docs/05-configuration.md      | 18 +++++++++++++++
+ docs/README.md.tpl            |  6 -----
+ docs/docgen.config.yml        | 32 --------------------------
+ docs/docs.rules               |  1 -
+ go.mod                        | 11 +++++++--
+ go.sum                        | 49 ++++++++++++++++++++++++++++++++++++----
+ grove.toml                    | 10 +++++++++
+ grove.yml                     |  9 --------
+ internal/display/unified.go   | 13 +++++++++++
+ internal/session/resolver.go  |  7 ++++++
+ internal/session/scanner.go   | 10 +++------
+ pkg/docs/docs.json            | 22 +++++++++---------
+ 21 files changed, 284 insertions(+), 130 deletions(-)
+```
+
 ## v0.1.1-nightly.9e6a2c9 (2025-10-03)
 
 ## v0.1.0 (2025-10-01)
