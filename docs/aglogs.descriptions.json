@@ -1,0 +1,5 @@
+{
+  "transcript": "Configures the default behavior for viewing agent transcripts via the aglogs command. Use this section to customize output verbosity and display limits to match your workflow preferences.",
+  "transcript.detail_level": "Controls the default verbosity of transcript output. Set to 'summary' for a concise overview of tool usage, or 'full' to inspect complete tool inputs and outputs for debugging purposes.",
+  "transcript.max_diff_lines": "Specifies the maximum number of lines to display for file edit diffs before truncating the output. Use a positive integer to prevent large edits from cluttering the terminal, or set to 0 to always show the full diff."
+}

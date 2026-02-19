@@ -1,0 +1,14 @@
+{
+  "transcript": {
+    "example": "[aglogs.transcript]\ndetail_level = \"summary\"\nmax_diff_lines = 20",
+    "description": "Configures general transcript viewing settings."
+  },
+  "transcript.detail_level": {
+    "example": "[aglogs.transcript]\ndetail_level = \"full\"",
+    "description": "Sets the verbosity to 'full' to show complete tool inputs and outputs."
+  },
+  "transcript.max_diff_lines": {
+    "example": "[aglogs.transcript]\nmax_diff_lines = 50",
+    "description": "Limits the number of lines displayed in diff outputs to prevent clutter."
+  }
+}
