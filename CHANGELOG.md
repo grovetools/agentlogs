@@ -1,3 +1,28 @@
+## v0.6.1 (2026-02-19)
+
+Configuration metadata now includes `x-layer` and `x-priority` schema extensions (77c2778), enabling better UI handling for global user preferences and display ordering.
+
+The configuration documentation has been migrated to use the config-reference component (fa91066), incorporating structured JSON data, generated descriptions, and TOML examples for improved maintenance and presentation.
+
+### Features
+- Add x-layer and x-priority schema extensions (77c2778)
+
+### Documentation
+- Migrate configuration to config-reference component (fa91066)
+
+### File Changes
+```
+ config/aglogs.schema.json     |  21 ++++++--
+ config/config.go              |   6 +--
+ docs/04-cli-reference.md      | 118 ++++++++++++++++++++++++++++++++++++++++++
+ docs/05-configuration.json    |  30 +++++++++++
+ docs/05-configuration.md      |  21 ++------
+ docs/aglogs.descriptions.json |   5 ++
+ docs/aglogs.examples.json     |  14 +++++
+ pkg/docs/docs.json            |  13 +++++
+ 8 files changed, 205 insertions(+), 23 deletions(-)
+```
+
 ## v0.6.0 (2026-02-02)
 
 Session management has been improved with XDG-compliant path resolution (26193ce), moving away from hardcoded paths for better system integration. Additionally, session resolution logic has been fixed to correctly prioritize the most recent session when multiple sessions exist for the same job (5f61c43).
