@@ -20,4 +20,6 @@ type SessionInfo struct {
 	LogFilePath string    `json:"logFilePath"`
 	StartedAt   time.Time `json:"startedAt"`
 	Provider    string    `json:"provider,omitempty"` // "claude", "codex", or "opencode"
+	Status      string    `json:"status,omitempty"`   // "running", "idle", "completed", etc.
+	PID         int       `json:"pid,omitempty"`      // Process ID when running
 }

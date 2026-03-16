@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,17 +13,90 @@ import (
 
 	"github.com/grovetools/core/config"
 	"github.com/grovetools/core/logging"
+	"github.com/grovetools/core/pkg/daemon"
 	"github.com/grovetools/core/pkg/paths"
 	"github.com/grovetools/core/pkg/sessions"
 	"github.com/grovetools/core/pkg/workspace"
 )
 
 // Scanner is responsible for finding and parsing session transcript logs.
-type Scanner struct{}
+type Scanner struct {
+	// useDaemon controls whether to query the daemon for live sessions.
+	// When true, the scanner will try the daemon first for faster lookups.
+	useDaemon bool
+}
 
-// NewScanner creates a new session scanner.
+// NewScanner creates a new session scanner that queries the daemon by default.
 func NewScanner() *Scanner {
-	return &Scanner{}
+	return &Scanner{useDaemon: true}
+}
+
+// NewScannerWithoutDaemon creates a scanner that skips daemon queries.
+// Use this for offline mode or when the daemon is known to be unavailable.
+func NewScannerWithoutDaemon() *Scanner {
+	return &Scanner{useDaemon: false}
+}
+
+// loadSessionsFromDaemon queries the daemon for active sessions and converts them to SessionInfo.
+// Returns nil, nil if the daemon is not available (graceful degradation).
+func (s *Scanner) loadSessionsFromDaemon() ([]SessionInfo, error) {
+	if !s.useDaemon {
+		return nil, nil
+	}
+
+	logger := logging.NewLogger("aglogs-daemon")
+
+	daemonClient := daemon.New()
+	defer daemonClient.Close()
+
+	if !daemonClient.IsRunning() {
+		logger.Debug("Daemon not running, skipping daemon query")
+		return nil, nil
+	}
+
+	daemonSessions, err := daemonClient.GetSessions(context.Background())
+	if err != nil {
+		logger.WithError(err).Debug("Failed to get sessions from daemon")
+		return nil, nil
+	}
+
+	logger.WithField("count", len(daemonSessions)).Debug("Loaded sessions from daemon")
+
+	var sessions []SessionInfo
+	for _, ds := range daemonSessions {
+		// Skip sessions without proper IDs
+		if ds.ID == "" {
+			continue
+		}
+
+		// Build JobInfo from daemon session
+		var jobs []JobInfo
+		if ds.PlanName != "" && ds.JobFilePath != "" {
+			jobs = append(jobs, JobInfo{
+				Plan: ds.PlanName,
+				Job:  filepath.Base(ds.JobFilePath),
+			})
+		}
+
+		// Parse project info from working directory
+		projectPath, projectName, worktree, ecosystem := s.parseProjectPath(ds.WorkingDirectory)
+
+		sessions = append(sessions, SessionInfo{
+			SessionID:   ds.ID,
+			ProjectName: projectName,
+			ProjectPath: projectPath,
+			Worktree:    worktree,
+			Ecosystem:   ecosystem,
+			Jobs:        jobs,
+			LogFilePath: "", // Daemon doesn't have transcript path in current model
+			StartedAt:   ds.StartedAt,
+			Provider:    ds.Provider,
+			Status:      ds.Status,
+			PID:         ds.PID,
+		})
+	}
+
+	return sessions, nil
 }
 
 // loadSessionRegistry scans the session registry directory and builds a map
@@ -101,7 +175,18 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		return nil, err
 	}
 
-	// 1. Load the session registry first for reliable job association.
+	// 0. Try to load live sessions from the daemon first (fastest path).
+	// Daemon sessions are already consolidated and have accurate PID info.
+	daemonSessions, _ := s.loadSessionsFromDaemon()
+	daemonSessionIDs := make(map[string]bool)
+	for _, ds := range daemonSessions {
+		daemonSessionIDs[ds.SessionID] = true
+	}
+	if len(daemonSessions) > 0 {
+		logger.WithField("daemon_count", len(daemonSessions)).Debug("Loaded sessions from daemon")
+	}
+
+	// 1. Load the session registry for reliable job association (fallback for non-daemon mode).
 	registry, err := s.loadSessionRegistry()
 	if err != nil {
 		// Log a warning but proceed, allowing fallback to old method.
@@ -303,6 +388,18 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	} else {
 		sessions = append(sessions, opencodeSessions...)
 		logger.WithField("opencode_count", len(opencodeSessions)).Debug("Added OpenCode sessions")
+	}
+
+	// 7. Add daemon sessions that weren't already found via filesystem scanning.
+	// These are sessions that the daemon knows about but don't have filesystem entries yet.
+	existingSessionIDs := make(map[string]bool)
+	for _, s := range sessions {
+		existingSessionIDs[s.SessionID] = true
+	}
+	for _, ds := range daemonSessions {
+		if !existingSessionIDs[ds.SessionID] {
+			sessions = append(sessions, ds)
+		}
 	}
 
 	return sessions, nil

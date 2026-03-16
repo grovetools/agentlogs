@@ -1,17 +1,48 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/grovetools/core/pkg/daemon"
 )
 
 // ResolveSessionInfo finds a session's metadata based on a specifier which can be a
 // plan/job string, a session ID, or a direct file path to a job file or log file.
 // It prioritizes the fastest lookup methods first.
 func ResolveSessionInfo(spec string) (*SessionInfo, error) {
+	// Try daemon lookup first for session ID (fastest path)
+	daemonClient := daemon.New()
+	defer daemonClient.Close()
+
+	if daemonClient.IsRunning() {
+		if session, err := daemonClient.GetSession(context.Background(), spec); err == nil && session != nil {
+			// Found via daemon - convert to SessionInfo
+			var jobs []JobInfo
+			if session.PlanName != "" && session.JobFilePath != "" {
+				jobs = append(jobs, JobInfo{
+					Plan: session.PlanName,
+					Job:  filepath.Base(session.JobFilePath),
+				})
+			}
+			return &SessionInfo{
+				SessionID:   session.ID,
+				ProjectName: filepath.Base(session.WorkingDirectory),
+				ProjectPath: session.WorkingDirectory,
+				Jobs:        jobs,
+				StartedAt:   session.StartedAt,
+				Provider:    session.Provider,
+				Status:      session.Status,
+				PID:         session.PID,
+			}, nil
+		}
+	}
+
+	// Fall back to full scan
 	scanner := NewScanner()
 	allSessions, err := scanner.Scan()
 	if err != nil {
