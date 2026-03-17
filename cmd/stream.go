@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/agentlogs/internal/transcript"
 	grovelogging "github.com/grovetools/core/logging"
+	"github.com/grovetools/core/pkg/daemon"
 	"github.com/spf13/cobra"
 )
 
@@ -56,12 +58,22 @@ func newStreamCmd() *cobra.Command {
 				}
 			}
 
+			// Try daemon SSE streaming first — this is the primary path in the new architecture.
+			// If the daemon is managing this job, it provides centralized log streaming.
+			daemonClient := daemon.New()
+			defer daemonClient.Close()
+			if daemonClient.IsRunning() {
+				if job, _ := daemonClient.GetJob(context.Background(), sessionInfo.SessionID); job != nil {
+					return streamFromDaemon(daemonClient, sessionInfo)
+				}
+			}
+
 			// Handle OpenCode sessions specially
 			if sessionInfo.Provider == "opencode" {
 				return streamOpenCodeSession(sessionInfo)
 			}
 
-			// Tail the log file from the end.
+			// Tail the log file from the end (fallback when daemon is unavailable).
 			return tailLogFile(sessionInfo)
 		},
 	}
@@ -126,6 +138,70 @@ func streamOpenCodeSession(s *session.SessionInfo) error {
 			}
 		}
 	}
+}
+
+// streamFromDaemon subscribes to the daemon's SSE log stream for a job.
+// This is the primary streaming path when the daemon is managing the job.
+func streamFromDaemon(client daemon.Client, s *session.SessionInfo) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch, err := client.StreamJobLogs(ctx, s.SessionID)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to daemon log stream: %w", err)
+	}
+
+	toolFormatters := map[string]formatters.ToolFormatter{
+		"Write":     formatters.MakeWriteFormatter(0),
+		"Edit":      formatters.MakeWriteFormatter(0),
+		"Read":      formatters.FormatReadTool,
+		"TodoWrite": formatters.FormatTodoWriteTool,
+	}
+
+	var normalizer transcript.Normalizer
+	if s.Provider == "codex" {
+		normalizer = transcript.NewCodexNormalizer()
+	} else {
+		normalizer = transcript.NewClaudeNormalizer()
+	}
+
+	ulogStream.Info("Streaming from daemon").
+		Field("job_id", s.SessionID).
+		Pretty(fmt.Sprintf("\n--- Tailing logs for job %s via daemon... ---\n", s.SessionID)).
+		PrettyOnly().
+		Emit()
+
+	for event := range ch {
+		if event.Event == "log" && event.Line != nil {
+			lineBytes := []byte(event.Line.Line)
+			entry, normErr := normalizer.NormalizeLine(lineBytes)
+
+			if normErr != nil {
+				// Not valid JSON; it's a standard text log (e.g., from a bash job)
+				fmt.Println(event.Line.Line)
+			} else if entry != nil {
+				// Valid agent JSON log entry
+				display.DisplayUnifiedEntry(*entry, "full", toolFormatters)
+			}
+			// If normErr == nil && entry == nil, the line was intentionally skipped by the normalizer
+
+		} else if event.Event == "status" {
+			if event.Status == "completed" || event.Status == "failed" || event.Status == "cancelled" {
+				ulogStream.Info("Job finished").
+					Field("status", event.Status).
+					Field("error", event.Error).
+					Pretty(fmt.Sprintf("\n--- Job finished (status: %s) ---\n", event.Status)).
+					PrettyOnly().
+					Emit()
+
+				if event.Error != "" {
+					fmt.Fprintf(os.Stderr, "Error: %s\n", event.Error)
+				}
+				return nil
+			}
+		}
+	}
+	return nil
 }
 
 func tailLogFile(s *session.SessionInfo) error {

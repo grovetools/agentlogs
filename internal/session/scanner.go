@@ -14,6 +14,7 @@ import (
 	"github.com/grovetools/core/config"
 	"github.com/grovetools/core/logging"
 	"github.com/grovetools/core/pkg/daemon"
+	"github.com/grovetools/core/pkg/models"
 	"github.com/grovetools/core/pkg/paths"
 	"github.com/grovetools/core/pkg/sessions"
 	"github.com/grovetools/core/pkg/workspace"
@@ -63,6 +64,21 @@ func (s *Scanner) loadSessionsFromDaemon() ([]SessionInfo, error) {
 	logger.WithField("count", len(daemonSessions)).Debug("Loaded sessions from daemon")
 
 	var sessions []SessionInfo
+
+	// Load jobs from daemon's JobRunner (primary source for flow-managed jobs)
+	daemonJobs, err := daemonClient.ListJobs(context.Background(), models.JobFilter{})
+	if err != nil {
+		logger.WithError(err).Debug("Failed to list jobs from daemon")
+	} else {
+		for _, dj := range daemonJobs {
+			sessions = append(sessions, *jobInfoToSessionInfo(dj))
+		}
+		if len(daemonJobs) > 0 {
+			logger.WithField("job_count", len(daemonJobs)).Debug("Loaded jobs from daemon JobRunner")
+		}
+	}
+
+	// Also load legacy daemon sessions (for sessions not managed as jobs)
 	for _, ds := range daemonSessions {
 		// Skip sessions without proper IDs
 		if ds.ID == "" {

@@ -9,17 +9,24 @@ import (
 	"strings"
 
 	"github.com/grovetools/core/pkg/daemon"
+	"github.com/grovetools/core/pkg/models"
 )
 
 // ResolveSessionInfo finds a session's metadata based on a specifier which can be a
 // plan/job string, a session ID, or a direct file path to a job file or log file.
 // It prioritizes the fastest lookup methods first.
 func ResolveSessionInfo(spec string) (*SessionInfo, error) {
-	// Try daemon lookup first for session ID (fastest path)
+	// Try daemon lookup first (fastest path)
 	daemonClient := daemon.New()
 	defer daemonClient.Close()
 
 	if daemonClient.IsRunning() {
+		// Try daemon job registry first — this is the primary source in the new architecture
+		if job, err := daemonClient.GetJob(context.Background(), spec); err == nil && job != nil {
+			return jobInfoToSessionInfo(job), nil
+		}
+
+		// Fall back to daemon session lookup (for sessions not managed as jobs)
 		if session, err := daemonClient.GetSession(context.Background(), spec); err == nil && session != nil {
 			// Found via daemon - convert to SessionInfo
 			var jobs []JobInfo
@@ -104,4 +111,30 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	}
 
 	return nil, fmt.Errorf("could not find session matching spec: %s", spec)
+}
+
+// jobInfoToSessionInfo converts a daemon JobInfo into a SessionInfo.
+func jobInfoToSessionInfo(job *models.JobInfo) *SessionInfo {
+	var jobs []JobInfo
+	if job.JobFile != "" {
+		jobs = append(jobs, JobInfo{
+			Plan: filepath.Base(job.PlanDir),
+			Job:  job.JobFile,
+		})
+	}
+
+	startedAt := job.SubmittedAt
+	if job.StartedAt != nil {
+		startedAt = *job.StartedAt
+	}
+
+	return &SessionInfo{
+		SessionID:   job.ID,
+		ProjectName: filepath.Base(job.PlanDir),
+		ProjectPath: job.PlanDir,
+		Jobs:        jobs,
+		StartedAt:   startedAt,
+		Status:      job.Status,
+		Provider:    "claude", // Default; daemon jobs are typically Claude agents
+	}
 }
