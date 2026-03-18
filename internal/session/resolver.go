@@ -23,29 +23,35 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	if daemonClient.IsRunning() {
 		// Try daemon job registry first — this is the primary source in the new architecture
 		if job, err := daemonClient.GetJob(context.Background(), spec); err == nil && job != nil {
-			return jobInfoToSessionInfo(job), nil
-		}
-
-		// Fall back to daemon session lookup (for sessions not managed as jobs)
-		if session, err := daemonClient.GetSession(context.Background(), spec); err == nil && session != nil {
-			// Found via daemon - convert to SessionInfo
-			var jobs []JobInfo
-			if session.PlanName != "" && session.JobFilePath != "" {
-				jobs = append(jobs, JobInfo{
-					Plan: session.PlanName,
-					Job:  filepath.Base(session.JobFilePath),
-				})
+			if job.Type == "interactive_agent" || job.Type == "headless_agent" || job.Type == "isolated_agent" {
+				// For agent jobs, the true transcript is the provider's JSONL file.
+				// The daemon only has orchestrator launch output, not the actual transcript.
+				// Fall through to full scan so it matches via the session registry with LogFilePath.
+			} else {
+				return jobInfoToSessionInfo(job), nil
 			}
-			return &SessionInfo{
-				SessionID:   session.ID,
-				ProjectName: filepath.Base(session.WorkingDirectory),
-				ProjectPath: session.WorkingDirectory,
-				Jobs:        jobs,
-				StartedAt:   session.StartedAt,
-				Provider:    session.Provider,
-				Status:      session.Status,
-				PID:         session.PID,
-			}, nil
+		} else {
+			// Fall back to daemon session lookup (for sessions not managed as jobs)
+			if session, err := daemonClient.GetSession(context.Background(), spec); err == nil && session != nil {
+				// Found via daemon - convert to SessionInfo
+				var jobs []JobInfo
+				if session.PlanName != "" && session.JobFilePath != "" {
+					jobs = append(jobs, JobInfo{
+						Plan: session.PlanName,
+						Job:  filepath.Base(session.JobFilePath),
+					})
+				}
+				return &SessionInfo{
+					SessionID:   session.ID,
+					ProjectName: filepath.Base(session.WorkingDirectory),
+					ProjectPath: session.WorkingDirectory,
+					Jobs:        jobs,
+					StartedAt:   session.StartedAt,
+					Provider:    session.Provider,
+					Status:      session.Status,
+					PID:         session.PID,
+				}, nil
+			}
 		}
 	}
 

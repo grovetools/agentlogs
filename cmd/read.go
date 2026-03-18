@@ -1,20 +1,19 @@
 package cmd
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	aglogs_config "github.com/grovetools/agentlogs/config"
 	"github.com/grovetools/agentlogs/internal/display"
 	"github.com/grovetools/agentlogs/internal/formatters"
-	"github.com/grovetools/agentlogs/internal/opencode"
+	"github.com/grovetools/agentlogs/internal/provider"
 	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/agentlogs/internal/transcript"
 	core_config "github.com/grovetools/core/config"
 	grovelogging "github.com/grovetools/core/logging"
+	"github.com/grovetools/core/pkg/daemon"
 	"github.com/spf13/cobra"
 )
 
@@ -35,12 +34,14 @@ func newReadCmd() *cobra.Command {
 			var sessionInfo *session.SessionInfo
 			var err error
 
-			// Fast path: if spec is a file path, read it directly
-			if fileInfo, statErr := os.Stat(spec); statErr == nil && !fileInfo.IsDir() {
+			// Fast path: if spec is an actual log file path (not a plan/job spec),
+			// read it directly. Uses isLogFilePath to avoid matching plan markdown
+			// files that happen to exist in the cwd.
+			if isLogFilePath(spec) {
 				// Construct minimal SessionInfo from the file path
-				provider := "claude"
+				prov := "claude"
 				if strings.Contains(spec, "/.codex/") {
-					provider = "codex"
+					prov = "codex"
 				}
 
 				// Extract session ID and project name from path if possible
@@ -61,7 +62,7 @@ func newReadCmd() *cobra.Command {
 
 				sessionInfo = &session.SessionInfo{
 					LogFilePath: spec,
-					Provider:    provider,
+					Provider:    prov,
 					SessionID:   sessionID,
 					ProjectName: projectName,
 					Jobs:        []session.JobInfo{},
@@ -75,26 +76,21 @@ func newReadCmd() *cobra.Command {
 			}
 
 			// Find the specific job within the session if the spec was a plan/job
-			var targetJob *session.JobInfo
-			var nextJobLine int = -1
+			startLine := 0
+			endLine := -1 // -1 = read to end
 			parts := strings.Split(spec, "/")
 			if len(parts) == 2 {
 				planName := parts[0]
 				jobName := parts[1]
 				for i, job := range sessionInfo.Jobs {
 					if job.Plan == planName && job.Job == jobName {
-						targetJob = &sessionInfo.Jobs[i]
+						startLine = job.LineIndex
 						if i+1 < len(sessionInfo.Jobs) {
-							nextJobLine = sessionInfo.Jobs[i+1].LineIndex
+							endLine = sessionInfo.Jobs[i+1].LineIndex
 						}
 						break
 					}
 				}
-			}
-
-			startLine := 0
-			if targetJob != nil {
-				startLine = targetJob.LineIndex
 			}
 
 			// --- Configuration Loading ---
@@ -120,59 +116,34 @@ func newReadCmd() *cobra.Command {
 				"TodoWrite": formatters.FormatTodoWriteTool,
 			}
 
-			// --- Handle OpenCode sessions specially ---
-			if sessionInfo.Provider == "opencode" {
-				return readOpenCodeSession(sessionInfo, detailLevel, jsonOutput, toolFormatters)
+			// --- Read via provider ---
+			daemonClient := daemon.New()
+			defer daemonClient.Close()
+
+			src := provider.SelectSource(sessionInfo, daemonClient)
+			opts := provider.ReadOptions{
+				DetailLevel:  detailLevel,
+				MaxDiffLines: maxDiffLines,
+				StartLine:    startLine,
+				EndLine:      endLine,
 			}
 
-			// --- Log Reading for Claude/Codex ---
-			file, err := os.Open(sessionInfo.LogFilePath)
+			entries, err := src.Read(cmd.Context(), sessionInfo, opts)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read transcript: %w", err)
 			}
-			defer file.Close()
-
-			fileScanner := bufio.NewScanner(file)
-			const maxScanTokenSize = 1024 * 1024 // 1MB
-			buf := make([]byte, 0, 64*1024)
-			fileScanner.Buffer(buf, maxScanTokenSize)
-
-			var logContentBuilder strings.Builder
-			lineIndex := 0
-			inRange := false
-			for fileScanner.Scan() {
-				if lineIndex >= startLine {
-					inRange = true
-				}
-				if nextJobLine != -1 && lineIndex >= nextJobLine {
-					break
-				}
-				if inRange {
-					line := fileScanner.Bytes()
-					if len(line) > 0 {
-						logContentBuilder.Write(line)
-						logContentBuilder.WriteString("\n")
-					}
-				}
-				lineIndex++
-			}
-			logContent := logContentBuilder.String()
 
 			// --- Output ---
 			if jsonOutput {
-				provider := "claude"
-				if strings.Contains(sessionInfo.LogFilePath, "/.codex/") {
-					provider = "codex"
-				}
 				output := struct {
-					LogContent  string `json:"log_content"`
-					LogFilePath string `json:"log_file_path"`
-					Provider    string `json:"provider"`
-					SessionID   string `json:"session_id"`
+					Entries     []transcript.UnifiedEntry `json:"entries"`
+					LogFilePath string                    `json:"log_file_path"`
+					Provider    string                    `json:"provider"`
+					SessionID   string                    `json:"session_id"`
 				}{
-					LogContent:  logContent,
+					Entries:     entries,
 					LogFilePath: sessionInfo.LogFilePath,
-					Provider:    provider,
+					Provider:    sessionInfo.Provider,
 					SessionID:   sessionInfo.SessionID,
 				}
 				jsonData, err := json.Marshal(output)
@@ -181,47 +152,13 @@ func newReadCmd() *cobra.Command {
 				}
 				ulogRead.Info("Read log content").
 					Field("session_id", sessionInfo.SessionID).
-					Field("provider", provider).
-					Field("log_file_path", sessionInfo.LogFilePath).
-					Field("content_length", len(logContent)).
+					Field("provider", sessionInfo.Provider).
+					Field("entry_count", len(entries)).
 					Pretty(string(jsonData)).
 					PrettyOnly().
 					Emit()
 			} else {
-				// Human-readable output using unified normalizers
-
-				// Select appropriate normalizer based on provider
-				isCodex := strings.Contains(sessionInfo.LogFilePath, "/.codex/")
-				var normalizer transcript.Normalizer
-				var claudeNormalizer *transcript.ClaudeNormalizer
-				if isCodex {
-					normalizer = transcript.NewCodexNormalizer()
-				} else {
-					claudeNormalizer = transcript.NewClaudeNormalizer()
-					normalizer = claudeNormalizer
-				}
-
-				// Create a new scanner to process the captured content
-				contentScanner := bufio.NewScanner(strings.NewReader(logContent))
-				// Increase the buffer to handle long lines, matching the fileScanner config.
-				const maxScanTokenSize = 1024 * 1024 // 1MB
-				buf := make([]byte, 0, 64*1024)
-				contentScanner.Buffer(buf, maxScanTokenSize)
-				for contentScanner.Scan() {
-					line := contentScanner.Bytes()
-					if len(line) > 0 {
-						if entry, err := normalizer.NormalizeLine(line); err == nil && entry != nil {
-							display.DisplayUnifiedEntry(*entry, detailLevel, toolFormatters)
-						}
-					}
-				}
-
-				// Flush any remaining buffered entries (Claude normalizer buffers tool calls)
-				if claudeNormalizer != nil {
-					for _, entry := range claudeNormalizer.Flush() {
-						display.DisplayUnifiedEntry(*entry, detailLevel, toolFormatters)
-					}
-				}
+				display.DisplayUnifiedTranscript(entries, detailLevel, toolFormatters)
 			}
 
 			return nil
@@ -231,51 +168,4 @@ func newReadCmd() *cobra.Command {
 	cmd.Flags().String("detail", "", "Set detail level for output ('summary' or 'full'). Overrides config.")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format with additional metadata")
 	return cmd
-}
-
-// readOpenCodeSession handles reading and displaying OpenCode sessions.
-func readOpenCodeSession(sessionInfo *session.SessionInfo, detailLevel string, jsonOutput bool, toolFormatters map[string]formatters.ToolFormatter) error {
-	assembler, err := opencode.NewAssembler()
-	if err != nil {
-		return fmt.Errorf("creating OpenCode assembler: %w", err)
-	}
-
-	entries, err := assembler.AssembleTranscript(sessionInfo.SessionID)
-	if err != nil {
-		return fmt.Errorf("assembling OpenCode transcript: %w", err)
-	}
-
-	// Normalize to unified format
-	normalizer := transcript.NewOpenCodeNormalizer()
-	unifiedEntries := normalizer.NormalizeAll(entries)
-
-	if jsonOutput {
-		output := struct {
-			Entries     []transcript.UnifiedEntry `json:"entries"`
-			LogFilePath string                    `json:"log_file_path"`
-			Provider    string                    `json:"provider"`
-			SessionID   string                    `json:"session_id"`
-		}{
-			Entries:     unifiedEntries,
-			LogFilePath: sessionInfo.LogFilePath,
-			Provider:    "opencode",
-			SessionID:   sessionInfo.SessionID,
-		}
-		jsonData, err := json.Marshal(output)
-		if err != nil {
-			return fmt.Errorf("failed to marshal to JSON: %w", err)
-		}
-		ulogRead.Info("Read OpenCode session").
-			Field("session_id", sessionInfo.SessionID).
-			Field("provider", "opencode").
-			Field("log_file_path", sessionInfo.LogFilePath).
-			Field("entry_count", len(unifiedEntries)).
-			Pretty(string(jsonData)).
-			PrettyOnly().
-			Emit()
-	} else {
-		display.DisplayUnifiedTranscript(unifiedEntries, detailLevel, toolFormatters)
-	}
-
-	return nil
 }
