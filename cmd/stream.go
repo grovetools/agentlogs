@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,6 +46,7 @@ func newStreamCmd() *cobra.Command {
 		Hidden: true, // Internal command for now
 		RunE: func(cmd *cobra.Command, args []string) error {
 			spec := args[0]
+			jsonOutput, _ := cmd.Flags().GetBool("json")
 
 			var sessionInfo *session.SessionInfo
 			var err error
@@ -137,8 +139,14 @@ func newStreamCmd() *cobra.Command {
 				return fmt.Errorf("failed to stream transcript: %w", err)
 			}
 
+			jsonEncoder := json.NewEncoder(os.Stdout)
+
 			for entry := range ch {
-				display.DisplayUnifiedEntry(entry, "full", toolFormatters)
+				if jsonOutput {
+					jsonEncoder.Encode(entry)
+				} else {
+					display.DisplayUnifiedEntry(entry, "full", toolFormatters)
+				}
 			}
 
 			return nil

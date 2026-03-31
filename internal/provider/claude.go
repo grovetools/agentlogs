@@ -59,6 +59,16 @@ func (s *ClaudeSource) Stream(ctx context.Context, info *session.SessionInfo) (<
 		for {
 			line, err := reader.ReadBytes('\n')
 			if err == io.EOF {
+				// Flush any buffered entries (e.g. tool calls waiting for results).
+				// In streaming mode we emit eagerly rather than waiting for tool results.
+				for _, flushed := range normalizer.Flush() {
+					select {
+					case ch <- *flushed:
+					case <-ctx.Done():
+						return
+					}
+				}
+
 				// Check if file still exists
 				if _, statErr := os.Stat(info.LogFilePath); statErr != nil {
 					return
