@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/grovetools/agentlogs/internal/session"
-	"github.com/grovetools/agentlogs/internal/transcript"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 // ReadOptions controls transcript reading behavior.

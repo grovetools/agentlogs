@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/grovetools/agentlogs/internal/transcript"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
 )

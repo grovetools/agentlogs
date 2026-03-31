@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/grovetools/agentlogs/internal/session"
-	"github.com/grovetools/agentlogs/internal/transcript"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 // ClaudeSource reads and streams Claude JSONL transcript files.

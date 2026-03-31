@@ -7,7 +7,7 @@ import (
 
 	"github.com/grovetools/agentlogs/internal/opencode"
 	"github.com/grovetools/agentlogs/internal/session"
-	"github.com/grovetools/agentlogs/internal/transcript"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 // OpenCodeSource reads and streams OpenCode transcripts via the Assembler.

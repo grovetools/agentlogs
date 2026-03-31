@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grovetools/agentlogs/internal/display"
-	"github.com/grovetools/agentlogs/internal/formatters"
+	"github.com/grovetools/agentlogs/pkg/display"
+	"github.com/grovetools/agentlogs/pkg/formatters"
 	"github.com/grovetools/agentlogs/internal/provider"
 	"github.com/grovetools/agentlogs/internal/session"
 	grovelogging "github.com/grovetools/core/logging"

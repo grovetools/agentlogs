@@ -1,13 +1,16 @@
 package display
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/grovetools/agentlogs/internal/formatters"
-	"github.com/grovetools/agentlogs/internal/transcript"
+	"github.com/grovetools/agentlogs/pkg/formatters"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 	"github.com/grovetools/core/tui/theme"
 )
 
@@ -15,6 +18,43 @@ import (
 const (
 	treeChar = "⎿" // Tree connector for sub-content
 )
+
+// FormatUnifiedEntry renders a single UnifiedEntry to a string.
+// It captures the output of DisplayUnifiedEntry.
+func FormatUnifiedEntry(
+	entry transcript.UnifiedEntry,
+	detailLevel string,
+	toolFormatters map[string]formatters.ToolFormatter,
+) string {
+	// Capture stdout
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		return ""
+	}
+	os.Stdout = w
+
+	DisplayUnifiedEntry(entry, detailLevel, toolFormatters)
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	r.Close()
+
+	return strings.TrimRight(buf.String(), "\n")
+}
+
+// DefaultToolFormatters returns the standard set of tool formatters.
+func DefaultToolFormatters() map[string]formatters.ToolFormatter {
+	return map[string]formatters.ToolFormatter{
+		"Write":     formatters.MakeWriteFormatter(0),
+		"Edit":      formatters.MakeWriteFormatter(0),
+		"Read":      formatters.FormatReadTool,
+		"TodoWrite": formatters.FormatTodoWriteTool,
+	}
+}
 
 // DisplayUnifiedEntry renders a single UnifiedEntry with consistent formatting.
 func DisplayUnifiedEntry(

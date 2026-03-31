@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/grovetools/agentlogs/internal/transcript"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 // Monitor wraps the internal transcript monitor

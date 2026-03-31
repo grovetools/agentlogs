@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/grovetools/agentlogs/internal/formatters"
+	"github.com/grovetools/agentlogs/pkg/formatters"
 	"github.com/grovetools/core/tui/theme"
 )
 

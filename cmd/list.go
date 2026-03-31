@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grovetools/agentlogs/internal/display"
+	"github.com/grovetools/agentlogs/pkg/display"
 	"github.com/grovetools/agentlogs/internal/session"
 	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
