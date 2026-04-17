@@ -26,7 +26,7 @@ type Confirmer struct {
 // RegisterAgent pre-registers a session intent with the daemon before agent launch.
 // Returns a Confirmer that should be called after PID discovery.
 func RegisterAgent(ctx context.Context, opts RegisterOptions) (*Confirmer, error) {
-	client := daemon.NewWithAutoStart()
+	client := daemon.NewWithAutoStart(opts.WorkDir)
 	err := client.RegisterSessionIntent(ctx, daemon.SessionIntent{
 		JobID:       opts.JobID,
 		Provider:    opts.Provider,

@@ -123,7 +123,7 @@ func newStreamCmd() *cobra.Command {
 			}
 
 			// Route to appropriate source
-			daemonClient := daemon.New()
+			daemonClient := daemon.New(sessionInfo.ProjectPath)
 			defer daemonClient.Close()
 
 			src := provider.SelectSource(sessionInfo, daemonClient)
