@@ -117,7 +117,7 @@ func newReadCmd() *cobra.Command {
 			}
 
 			// --- Read via provider ---
-			daemonClient := daemon.New(sessionInfo.ProjectPath)
+			daemonClient := daemon.New()
 			defer daemonClient.Close()
 
 			src := provider.SelectSource(sessionInfo, daemonClient)
