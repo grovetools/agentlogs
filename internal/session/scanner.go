@@ -47,7 +47,7 @@ func (s *Scanner) loadSessionsFromDaemon() ([]SessionInfo, error) {
 
 	logger := logging.NewLogger("aglogs-daemon")
 
-	daemonClient := daemon.New()
+	daemonClient := daemon.NewWithAutoStart()
 	defer daemonClient.Close()
 
 	if !daemonClient.IsRunning() {

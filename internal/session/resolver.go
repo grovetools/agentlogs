@@ -17,7 +17,7 @@ import (
 // It prioritizes the fastest lookup methods first.
 func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	// Try daemon lookup first (fastest path)
-	daemonClient := daemon.New()
+	daemonClient := daemon.NewWithAutoStart()
 	defer daemonClient.Close()
 
 	if daemonClient.IsRunning() {
