@@ -14,6 +14,7 @@ type RegisterOptions struct {
 	Title       string
 	JobFilePath string
 	PlanName    string
+	Mux         string
 }
 
 // Confirmer is returned by RegisterAgent and used to confirm the session
@@ -34,6 +35,7 @@ func RegisterAgent(ctx context.Context, opts RegisterOptions) (*Confirmer, error
 		PlanName:    opts.PlanName,
 		Title:       opts.Title,
 		WorkDir:     opts.WorkDir,
+		Mux:         opts.Mux,
 	})
 	if err != nil {
 		return nil, err
