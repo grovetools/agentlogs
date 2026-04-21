@@ -41,7 +41,7 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 						Job:  filepath.Base(session.JobFilePath),
 					})
 				}
-				return &SessionInfo{
+				info := &SessionInfo{
 					SessionID:   session.ID,
 					ProjectName: filepath.Base(session.WorkingDirectory),
 					ProjectPath: session.WorkingDirectory,
@@ -50,7 +50,11 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 					Provider:    session.Provider,
 					Status:      session.Status,
 					PID:         session.PID,
-				}, nil
+				}
+				// Daemon records don't carry LogFilePath; enrich from scanner so
+				// file-based providers can actually open the transcript.
+				enrichLogFilePath(info)
+				return info, nil
 			}
 		}
 	}
@@ -81,42 +85,102 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 		}
 	}
 
-	// Strategy 2: Check for session ID or plan/job spec
+	// Strategy 2: Check for session ID or plan/job spec.
+	// When multiple sessions match (e.g. a filesystem-backed entry and a
+	// daemon-only entry for the same job), prefer the one with LogFilePath
+	// set; otherwise fall back to the first match so callers still get a hit.
 	parts := strings.Split(spec, "/")
 	isPlanJobSpec := len(parts) == 2 && strings.HasSuffix(parts[1], ".md")
 
+	var fallbackIdx = -1
 	for i, s := range allSessions {
-		// Match by session ID
+		matched := false
 		if s.SessionID == spec {
-			return &allSessions[i], nil
-		}
-
-		// Match by plan/job spec
-		if isPlanJobSpec {
+			matched = true
+		} else if isPlanJobSpec {
 			planName := parts[0]
 			jobName := parts[1]
 			for _, job := range s.Jobs {
 				if job.Plan == planName && job.Job == jobName {
-					return &allSessions[i], nil
+					matched = true
+					break
 				}
 			}
 		}
+		if !matched {
+			continue
+		}
+		if s.LogFilePath != "" {
+			return &allSessions[i], nil
+		}
+		if fallbackIdx == -1 {
+			fallbackIdx = i
+		}
+	}
+	if fallbackIdx != -1 {
+		return &allSessions[fallbackIdx], nil
 	}
 
 	// Strategy 3: Check if spec is a job file path (which might not be part of a plan/job spec)
 	if _, err := os.Stat(spec); err == nil {
 		jobFilename := filepath.Base(spec)
 		planName := filepath.Base(filepath.Dir(spec))
+		var fsFallbackIdx = -1
 		for i, s := range allSessions {
+			matched := false
 			for _, job := range s.Jobs {
 				if job.Plan == planName && job.Job == jobFilename {
-					return &allSessions[i], nil
+					matched = true
+					break
 				}
 			}
+			if !matched {
+				continue
+			}
+			if s.LogFilePath != "" {
+				return &allSessions[i], nil
+			}
+			if fsFallbackIdx == -1 {
+				fsFallbackIdx = i
+			}
+		}
+		if fsFallbackIdx != -1 {
+			return &allSessions[fsFallbackIdx], nil
 		}
 	}
 
 	return nil, fmt.Errorf("could not find session matching spec: %s", spec)
+}
+
+// enrichLogFilePath populates info.LogFilePath from a local scanner pass when
+// the daemon resolved a session but didn't include the transcript path.
+// Matches first by SessionID, then by (Plan, Job) pair across discovered sessions.
+func enrichLogFilePath(info *SessionInfo) {
+	if info == nil || info.LogFilePath != "" {
+		return
+	}
+	scanner := NewScannerWithoutDaemon()
+	allSessions, err := scanner.Scan()
+	if err != nil {
+		return
+	}
+	for _, s := range allSessions {
+		if s.LogFilePath == "" {
+			continue
+		}
+		if s.SessionID == info.SessionID {
+			info.LogFilePath = s.LogFilePath
+			return
+		}
+		for _, job := range s.Jobs {
+			for _, target := range info.Jobs {
+				if job.Plan == target.Plan && job.Job == target.Job {
+					info.LogFilePath = s.LogFilePath
+					return
+				}
+			}
+		}
+	}
 }
 
 // jobInfoToSessionInfo converts a daemon JobInfo into a SessionInfo.

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grovetools/core/config"
@@ -451,6 +452,83 @@ func (s *Scanner) parseProjectPath(cwd string) (projectPath, projectName, worktr
 	return
 }
 
+// briefingPathRe matches flow's agent briefing paths:
+//
+//	<plans-root>/<plan-name>/.artifacts/<job-id>/briefing-<ts>.xml
+//
+// Flow's orchestrator writes this exact layout in briefing.go, and every agent
+// job's first user message embeds it. Captures the plan directory and job ID.
+var briefingPathRe = regexp.MustCompile(`(/[^'"\s]+/plans/[^/]+)/\.artifacts/([^/]+)/briefing-\d+\.xml`)
+
+// jobIDFilenameCache memoizes (planDir, jobID) -> job filename lookups across
+// parseClaudeLog calls. Entries are never invalidated; scanner.Scan runs are
+// short-lived.
+var jobIDFilenameCache sync.Map
+
+// parseBriefingInfo extracts (planDir, planName, jobID) from a user message that
+// references an agent briefing file. Returns empty strings if no briefing path
+// is present. Used as a fallback when the hooks session registry has no entry
+// for this Claude JSONL (e.g. agent killed before registration finished).
+func (s *Scanner) parseBriefingInfo(content string) (planDir, planName, jobID string) {
+	m := briefingPathRe.FindStringSubmatch(content)
+	if len(m) != 3 {
+		return "", "", ""
+	}
+	planDir = m[1]
+	planName = filepath.Base(planDir)
+	jobID = m[2]
+	return
+}
+
+// resolveJobFilenameByID scans planDir for a .md file whose frontmatter `id:`
+// matches jobID and returns the filename. Returns "" if no match.
+func (s *Scanner) resolveJobFilenameByID(planDir, jobID string) string {
+	cacheKey := planDir + ":" + jobID
+	if v, ok := jobIDFilenameCache.Load(cacheKey); ok {
+		return v.(string)
+	}
+	result := ""
+	defer func() { jobIDFilenameCache.Store(cacheKey, result) }()
+
+	entries, err := os.ReadDir(planDir)
+	if err != nil {
+		return result
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		f, err := os.Open(filepath.Join(planDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		sc := bufio.NewScanner(f)
+		n := 0
+		matched := false
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if strings.HasPrefix(line, "id:") {
+				v := strings.TrimSpace(strings.TrimPrefix(line, "id:"))
+				v = strings.Trim(v, `"'`)
+				if v == jobID {
+					matched = true
+				}
+				break
+			}
+			n++
+			if n > 40 {
+				break
+			}
+		}
+		f.Close()
+		if matched {
+			result = e.Name()
+			return result
+		}
+	}
+	return result
+}
+
 func (s *Scanner) parsePlanInfo(content string) (plan, job string) {
 	if strings.Contains(content, "Read the file") && strings.Contains(content, "and execute the agent job") {
 		start := strings.Index(content, "/")
@@ -524,6 +602,14 @@ func (s *Scanner) parseClaudeLog(logPath string) (sessionID, cwd string, started
 					if !jobMap[key] {
 						jobMap[key] = true
 						jobs = append(jobs, JobInfo{Plan: plan, Job: job, LineIndex: lineIndex})
+					}
+				} else if planDir, planName, jobID := s.parseBriefingInfo(msg.Message.Content); jobID != "" {
+					if jobFilename := s.resolveJobFilenameByID(planDir, jobID); jobFilename != "" {
+						key := planName + ":" + jobFilename
+						if !jobMap[key] {
+							jobMap[key] = true
+							jobs = append(jobs, JobInfo{Plan: planName, Job: jobFilename, LineIndex: lineIndex})
+						}
 					}
 				}
 			}
