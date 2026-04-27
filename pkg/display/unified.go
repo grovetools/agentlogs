@@ -67,8 +67,8 @@ func DisplayUnifiedEntry(
 	userStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Yellow)
 	mutedStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.MutedText)
 
-	robotToolIcon := robotToolStyle.Render(theme.IconRobot)  // Green for tool calls
-	robotTextIcon := robotTextStyle.Render(theme.IconRobot)  // White for text responses
+	robotToolIcon := robotToolStyle.Render(theme.IconRobot) // Green for tool calls
+	robotTextIcon := robotTextStyle.Render(theme.IconRobot) // White for text responses
 	userIcon := userStyle.Render(theme.IconChevron)
 	tree := mutedStyle.Render(treeChar)
 

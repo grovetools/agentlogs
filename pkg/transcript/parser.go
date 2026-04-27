@@ -60,9 +60,9 @@ type ExtractedMessage struct {
 
 // CodexLogEntry represents a single entry in the Codex JSONL log
 type CodexLogEntry struct {
-	SessionID string    `json:"session_id"`
-	Timestamp int64     `json:"ts"`
-	Text      string    `json:"text"`
+	SessionID string `json:"session_id"`
+	Timestamp int64  `json:"ts"`
+	Text      string `json:"text"`
 }
 
 // Parser handles JSONL transcript parsing

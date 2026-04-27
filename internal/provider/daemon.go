@@ -46,7 +46,9 @@ func (s *DaemonSource) Read(ctx context.Context, info *session.SessionInfo, opts
 	}
 
 	// Flush if the normalizer supports it (ClaudeNormalizer buffers tool calls)
-	if flusher, ok := normalizer.(interface{ Flush() []*transcript.UnifiedEntry }); ok {
+	if flusher, ok := normalizer.(interface {
+		Flush() []*transcript.UnifiedEntry
+	}); ok {
 		for _, entry := range flusher.Flush() {
 			entries = append(entries, *entry)
 		}
@@ -106,7 +108,9 @@ func (s *DaemonSource) Stream(ctx context.Context, info *session.SessionInfo) (<
 		}
 
 		// Flush remaining buffered entries
-		if flusher, ok := normalizer.(interface{ Flush() []*transcript.UnifiedEntry }); ok {
+		if flusher, ok := normalizer.(interface {
+			Flush() []*transcript.UnifiedEntry
+		}); ok {
 			for _, entry := range flusher.Flush() {
 				select {
 				case ch <- *entry:

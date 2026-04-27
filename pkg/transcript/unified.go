@@ -7,7 +7,7 @@ import (
 
 // UnifiedEntry represents a single transcript entry normalized across all providers.
 type UnifiedEntry struct {
-	Role      string         `json:"role"`      // "user" or "assistant"
+	Role      string         `json:"role"` // "user" or "assistant"
 	Timestamp time.Time      `json:"timestamp"`
 	MessageID string         `json:"messageID"`
 	Parts     []UnifiedPart  `json:"parts"`

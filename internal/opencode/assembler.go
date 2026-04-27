@@ -16,19 +16,19 @@ import (
 
 // TranscriptEntry represents a single entry in the assembled transcript.
 type TranscriptEntry struct {
-	Role      string       `json:"role"` // "user" or "assistant"
-	Timestamp time.Time    `json:"timestamp"`
-	Parts     []Part       `json:"parts"`
-	MessageID string       `json:"messageID"`
-	Tokens    *TokenUsage  `json:"tokens,omitempty"`
+	Role      string      `json:"role"` // "user" or "assistant"
+	Timestamp time.Time   `json:"timestamp"`
+	Parts     []Part      `json:"parts"`
+	MessageID string      `json:"messageID"`
+	Tokens    *TokenUsage `json:"tokens,omitempty"`
 }
 
 // TokenUsage contains token consumption info from a message.
 type TokenUsage struct {
-	Input     int `json:"input"`
-	Output    int `json:"output"`
-	Reasoning int `json:"reasoning"`
-	CacheRead int `json:"cache_read"`
+	Input      int `json:"input"`
+	Output     int `json:"output"`
+	Reasoning  int `json:"reasoning"`
+	CacheRead  int `json:"cache_read"`
 	CacheWrite int `json:"cache_write"`
 }
 
@@ -176,10 +176,10 @@ func (a *Assembler) AssembleTranscript(sessionID string) ([]TranscriptEntry, err
 		// Add token usage if available
 		if msg.Tokens.Input > 0 || msg.Tokens.Output > 0 {
 			entry.Tokens = &TokenUsage{
-				Input:     msg.Tokens.Input,
-				Output:    msg.Tokens.Output,
-				Reasoning: msg.Tokens.Reasoning,
-				CacheRead: msg.Tokens.Cache.Read,
+				Input:      msg.Tokens.Input,
+				Output:     msg.Tokens.Output,
+				Reasoning:  msg.Tokens.Reasoning,
+				CacheRead:  msg.Tokens.Cache.Read,
 				CacheWrite: msg.Tokens.Cache.Write,
 			}
 		}

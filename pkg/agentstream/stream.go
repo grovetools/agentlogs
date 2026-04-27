@@ -13,8 +13,8 @@ import (
 
 // StreamOptions configures transcript streaming.
 type StreamOptions struct {
-	TranscriptPath string              // Direct path (if already known)
-	Discover       *DiscoverOptions    // Or discover automatically
+	TranscriptPath string                // Direct path (if already known)
+	Discover       *DiscoverOptions      // Or discover automatically
 	Normalizer     transcript.Normalizer // Optional override; defaults based on provider
 }
 

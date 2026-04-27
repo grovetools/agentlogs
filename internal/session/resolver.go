@@ -92,7 +92,7 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	parts := strings.Split(spec, "/")
 	isPlanJobSpec := len(parts) == 2 && strings.HasSuffix(parts[1], ".md")
 
-	var fallbackIdx = -1
+	fallbackIdx := -1
 	for i, s := range allSessions {
 		matched := false
 		if s.SessionID == spec {
@@ -125,7 +125,7 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	if _, err := os.Stat(spec); err == nil {
 		jobFilename := filepath.Base(spec)
 		planName := filepath.Base(filepath.Dir(spec))
-		var fsFallbackIdx = -1
+		fsFallbackIdx := -1
 		for i, s := range allSessions {
 			matched := false
 			for _, job := range s.Jobs {

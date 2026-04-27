@@ -22,16 +22,16 @@ type TokenUsage struct {
 
 // TokenStats aggregates token statistics for a session
 type TokenStats struct {
-	SessionID               string `json:"session_id"`
-	Provider                string `json:"provider"`
-	MessageCount            int    `json:"message_count"`
-	TotalInputTokens        int    `json:"total_input_tokens"`
-	TotalOutputTokens       int    `json:"total_output_tokens"`
-	TotalCacheCreation      int    `json:"total_cache_creation_tokens"`
-	TotalCacheRead          int    `json:"total_cache_read_tokens"`
-	LatestContextSize       int    `json:"latest_context_size"`
-	LatestCacheReadTokens   int    `json:"latest_cache_read_tokens"`
-	LatestOutputTokens      int    `json:"latest_output_tokens"`
+	SessionID             string `json:"session_id"`
+	Provider              string `json:"provider"`
+	MessageCount          int    `json:"message_count"`
+	TotalInputTokens      int    `json:"total_input_tokens"`
+	TotalOutputTokens     int    `json:"total_output_tokens"`
+	TotalCacheCreation    int    `json:"total_cache_creation_tokens"`
+	TotalCacheRead        int    `json:"total_cache_read_tokens"`
+	LatestContextSize     int    `json:"latest_context_size"`
+	LatestCacheReadTokens int    `json:"latest_cache_read_tokens"`
+	LatestOutputTokens    int    `json:"latest_output_tokens"`
 }
 
 func newTokensCmd() *cobra.Command {

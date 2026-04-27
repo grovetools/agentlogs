@@ -37,11 +37,11 @@ type SummaryConfig struct {
 
 // SessionSummary represents the AI-generated summary
 type SessionSummary struct {
-	CurrentActivity string            `json:"current_activity"`
+	CurrentActivity string             `json:"current_activity"`
 	History         []models.Milestone `json:"history"` // Renamed from Milestones, stores append-only history
-	LastUpdated     time.Time         `json:"last_updated"`
-	UpdateCount     int               `json:"update_count"`
-	NextUpdateAt    int               `json:"next_update_at_message"`
+	LastUpdated     time.Time          `json:"last_updated"`
+	UpdateCount     int                `json:"update_count"`
+	NextUpdateAt    int                `json:"next_update_at_message"`
 }
 
 // NewSummaryManager creates a new summary manager
@@ -196,10 +196,10 @@ func (sm *SummaryManager) getSessionMessages(sessionID string) ([]ExtractedMessa
 func (sm *SummaryManager) generateProgressiveSummary(sessionID string, messages []ExtractedMessage) (*SessionSummary, error) {
 	// Get existing summary to preserve history and track update count
 	existingSummary, _ := sm.getExistingSummary(sessionID)
-	
+
 	var updateCount int
 	var history []models.Milestone
-	
+
 	if existingSummary != nil {
 		updateCount = existingSummary.UpdateCount
 		history = existingSummary.History
@@ -223,7 +223,7 @@ func (sm *SummaryManager) generateProgressiveSummary(sessionID string, messages 
 			log.Printf("Failed to generate current activity summary: %v", err)
 		} else {
 			summary.CurrentActivity = currentActivity
-			
+
 			// Add current activity to history as a new entry
 			historyEntry := models.Milestone{
 				Timestamp: time.Now(),
@@ -263,8 +263,6 @@ Current activity summary:`, conversation)
 
 	return sm.callLLM(prompt)
 }
-
-
 
 // formatMessagesForLLM formats messages for LLM consumption
 func (sm *SummaryManager) formatMessagesForLLM(messages []ExtractedMessage) string {

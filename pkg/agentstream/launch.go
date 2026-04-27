@@ -71,4 +71,3 @@ func CleanupPIDFile(jobID string) error {
 func PidFilePath(jobID string) string {
 	return filepath.Join(paths.RuntimeDir(), fmt.Sprintf("grove-agent-%s.pid", jobID))
 }
-

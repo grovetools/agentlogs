@@ -30,7 +30,7 @@ func NewMonitorWithConfig(db *sql.DB, checkInterval time.Duration, summaryConfig
 		MaxInputTokens:   summaryConfig.MaxInputTokens,
 		MilestoneEnabled: summaryConfig.MilestoneEnabled,
 	}
-	
+
 	return &Monitor{
 		Monitor: transcript.NewMonitorWithConfig(db, checkInterval, internalConfig),
 	}
