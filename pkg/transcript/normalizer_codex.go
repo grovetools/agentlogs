@@ -118,7 +118,7 @@ func (n *CodexNormalizer) NormalizeLine(line []byte) (*UnifiedEntry, error) {
 
 			// Parse the arguments JSON
 			var args map[string]interface{}
-			json.Unmarshal([]byte(argsStr), &args)
+			_ = json.Unmarshal([]byte(argsStr), &args)
 
 			// For shell commands, extract command for display
 			var command string
@@ -153,7 +153,7 @@ func (n *CodexNormalizer) NormalizeLine(line []byte) (*UnifiedEntry, error) {
 					DurationSeconds float64 `json:"duration_seconds"`
 				} `json:"metadata"`
 			}
-			json.Unmarshal([]byte(outputStr), &outputData)
+			_ = json.Unmarshal([]byte(outputStr), &outputData)
 
 			isError := outputData.Metadata.ExitCode != 0
 

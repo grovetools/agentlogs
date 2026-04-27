@@ -107,10 +107,7 @@ func DisplayTranscriptEntry(
 								toolInfo += "]"
 								toolUses = append(toolUses, toolInfo)
 							}
-						} else if content.Type == "tool_result" {
-							// Display tool output if requested (skip for now to reduce noise)
-							// Tool results are typically shown by the system or are verbose
-							// Users can check actual log files for full output details
+						} else if content.Type == "tool_result" { //nolint:staticcheck // intentionally empty — tool results skipped to reduce noise
 						}
 					}
 				}

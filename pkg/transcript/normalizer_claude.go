@@ -230,7 +230,7 @@ func (n *ClaudeNormalizer) parseContent(content json.RawMessage) []UnifiedPart {
 			}
 		case "tool_use":
 			var inputMap map[string]interface{}
-			json.Unmarshal(item.Input, &inputMap)
+			_ = json.Unmarshal(item.Input, &inputMap)
 			parts = append(parts, UnifiedPart{
 				Type: "tool_call",
 				Content: UnifiedToolCall{
@@ -241,7 +241,7 @@ func (n *ClaudeNormalizer) parseContent(content json.RawMessage) []UnifiedPart {
 			})
 		case "tool_result":
 			var output string
-			json.Unmarshal(item.Content, &output)
+			_ = json.Unmarshal(item.Content, &output)
 			parts = append(parts, UnifiedPart{
 				Type: "tool_result",
 				Content: UnifiedToolResult{

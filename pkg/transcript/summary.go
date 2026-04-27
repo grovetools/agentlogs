@@ -44,19 +44,6 @@ type SessionSummary struct {
 	NextUpdateAt    int               `json:"next_update_at_message"`
 }
 
-// Common prompt instructions for all summary types
-const summaryPromptInstructions = `
-**NEVER** say anything along the lines of:
-
-* "here is a summary"
-* "based on the messages"
-* "the recent work"
-* "the user requested".
-
-Do not state anything about the LLM producing the summary or doing the coding work.
-
-We only want direct info related to the programming tasks being completed.`
-
 // NewSummaryManager creates a new summary manager
 func NewSummaryManager(db *sql.DB) *SummaryManager {
 	return &SummaryManager{
@@ -196,7 +183,7 @@ func (sm *SummaryManager) getSessionMessages(sessionID string) ([]ExtractedMessa
 		msg.RawContent = rawContent
 
 		if len(metadataJSON) > 0 {
-			json.Unmarshal(metadataJSON, &msg.Metadata)
+			_ = json.Unmarshal(metadataJSON, &msg.Metadata)
 		}
 
 		messages = append(messages, msg)

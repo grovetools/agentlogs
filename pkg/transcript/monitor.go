@@ -185,7 +185,7 @@ func (m *Monitor) getActiveSessions() ([]*SessionWithProvider, error) {
 
 		// Parse JSON fields
 		if toolStatsJSON.Valid {
-			json.Unmarshal([]byte(toolStatsJSON.String), &session.ToolStats)
+			_ = json.Unmarshal([]byte(toolStatsJSON.String), &session.ToolStats)
 		}
 		if sessionSummaryJSON.Valid {
 			var summary models.Summary
@@ -293,7 +293,7 @@ func (m *Monitor) storeMessages(messages []ExtractedMessage) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
 		INSERT OR IGNORE INTO claude_messages 

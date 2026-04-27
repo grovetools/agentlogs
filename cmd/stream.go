@@ -143,7 +143,7 @@ func newStreamCmd() *cobra.Command {
 
 			for entry := range ch {
 				if jsonOutput {
-					jsonEncoder.Encode(entry)
+					_ = jsonEncoder.Encode(entry)
 				} else {
 					display.DisplayUnifiedEntry(entry, "full", toolFormatters)
 				}
