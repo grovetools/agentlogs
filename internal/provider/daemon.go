@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/grovetools/core/pkg/daemon"
+
 	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/agentlogs/pkg/transcript"
-	"github.com/grovetools/core/pkg/daemon"
 )
 
 // DaemonSource reads and streams logs via the daemon's API.

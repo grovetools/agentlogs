@@ -22,7 +22,7 @@ import (
 // Example: for "claude --model opus", returns:
 //
 //	sh -c 'mkdir -p /path/to && echo $$ > /path/to/grove-agent-<jobID>.pid && exec claude --model opus'
-func BuildAgentCommand(jobID string, agentCmd string) string {
+func BuildAgentCommand(jobID, agentCmd string) string {
 	pidFile := PidFilePath(jobID)
 	// Escape single quotes in the agent command for embedding in sh -c '...'
 	escapedCmd := strings.ReplaceAll(agentCmd, "'", "'\"'\"'")

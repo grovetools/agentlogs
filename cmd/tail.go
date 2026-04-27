@@ -3,9 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/grovetools/agentlogs/pkg/transcript"
 	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
+
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 var ulogTail = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.tail")

@@ -5,8 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/grovetools/agentlogs/config"
 	"github.com/invopop/jsonschema"
+
+	"github.com/grovetools/agentlogs/config"
 )
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 		log.Fatalf("Error marshaling schema: %v", err)
 	}
 
-	if err := os.WriteFile("aglogs.schema.json", data, 0o644); err != nil {
+	if err := os.WriteFile("aglogs.schema.json", data, 0o600); err != nil {
 		log.Fatalf("Error writing schema file: %v", err)
 	}
 

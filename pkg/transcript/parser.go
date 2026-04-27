@@ -330,7 +330,7 @@ func (p *Parser) extractMessage(entry TranscriptEntry) *ExtractedMessage {
 
 // GetTranscriptPath finds the transcript path for a session
 // provider should be "claude" or "codex"
-func GetTranscriptPath(sessionID string, provider string) (string, error) {
+func GetTranscriptPath(sessionID, provider string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

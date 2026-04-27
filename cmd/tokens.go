@@ -7,9 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/core/cli"
 	"github.com/spf13/cobra"
+
+	"github.com/grovetools/agentlogs/internal/session"
 )
 
 // TokenUsage represents the usage stats from a Claude API response

@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/grovetools/core/tui/theme"
+
 	"github.com/grovetools/agentlogs/pkg/formatters"
 	"github.com/grovetools/agentlogs/pkg/transcript"
-	"github.com/grovetools/core/tui/theme"
 )
 
 // Formatting constants for output
@@ -239,7 +240,7 @@ func getStringField(m map[string]interface{}, key string) string {
 
 // formatToolOutput formats tool output, with special handling for read-like tools.
 // Returns a simple string without leading/trailing whitespace - caller handles indentation.
-func formatToolOutput(toolName string, output string, mutedStyle lipgloss.Style) string {
+func formatToolOutput(toolName, output string, mutedStyle lipgloss.Style) string {
 	if output == "" {
 		return ""
 	}

@@ -3,8 +3,9 @@ package main
 import (
 	"os"
 
-	"github.com/grovetools/agentlogs/cmd"
 	grovelogging "github.com/grovetools/core/logging"
+
+	"github.com/grovetools/agentlogs/cmd"
 )
 
 func main() {

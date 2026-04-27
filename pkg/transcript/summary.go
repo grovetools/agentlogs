@@ -299,7 +299,7 @@ func (sm *SummaryManager) callLLM(prompt string) (string, error) {
 		return "", fmt.Errorf("invalid LLM command")
 	}
 
-	cmd := exec.Command(cmdParts[0], cmdParts[1:]...)
+	cmd := exec.Command(cmdParts[0], cmdParts[1:]...) //nolint:gosec // command comes from user config, not untrusted input
 	cmd.Stdin = strings.NewReader(prompt)
 
 	var out bytes.Buffer

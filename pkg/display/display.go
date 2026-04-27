@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/grovetools/agentlogs/pkg/formatters"
 	"github.com/grovetools/core/tui/theme"
+
+	"github.com/grovetools/agentlogs/pkg/formatters"
 )
 
 // TranscriptEntry represents a single entry in the transcript.

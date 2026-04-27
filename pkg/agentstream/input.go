@@ -33,7 +33,7 @@ func WithSocket(socket string) InputOption {
 // Using "Enter" instead of "C-m" because newer claude code TUIs treat
 // them differently in some modes; "Enter" is the keyword the launch
 // path uses and is what the rest of grovetools standardized on.
-func SendInput(ctx context.Context, tmuxTarget string, input string, opts ...InputOption) error {
+func SendInput(ctx context.Context, tmuxTarget, input string, opts ...InputOption) error {
 	cfg := &inputConfig{}
 	for _, opt := range opts {
 		opt(cfg)

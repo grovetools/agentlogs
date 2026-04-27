@@ -9,10 +9,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grovetools/agentlogs/internal/session"
 	grovelogging "github.com/grovetools/core/logging"
 	"github.com/grovetools/core/pkg/sessions"
 	"github.com/spf13/cobra"
+
+	"github.com/grovetools/agentlogs/internal/session"
 )
 
 var ulogGetSessionInfo = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.getSessionInfo")

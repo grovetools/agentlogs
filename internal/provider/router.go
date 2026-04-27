@@ -3,8 +3,9 @@ package provider
 import (
 	"context"
 
-	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/core/pkg/daemon"
+
+	"github.com/grovetools/agentlogs/internal/session"
 )
 
 // SelectSource determines the best TranscriptSource for a given session.

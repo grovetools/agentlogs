@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/grovetools/agentlogs/pkg/transcript"
 	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
+
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 var ulogQuery = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.query")

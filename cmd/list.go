@@ -7,10 +7,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grovetools/agentlogs/internal/session"
-	"github.com/grovetools/agentlogs/pkg/display"
 	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
+
+	"github.com/grovetools/agentlogs/internal/session"
+	"github.com/grovetools/agentlogs/pkg/display"
 )
 
 var ulogList = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.list")

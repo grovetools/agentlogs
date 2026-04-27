@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
+	grovelogging "github.com/grovetools/core/logging"
+	"github.com/grovetools/core/pkg/daemon"
+	"github.com/spf13/cobra"
+
 	"github.com/grovetools/agentlogs/internal/provider"
 	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/agentlogs/pkg/display"
 	"github.com/grovetools/agentlogs/pkg/formatters"
-	grovelogging "github.com/grovetools/core/logging"
-	"github.com/grovetools/core/pkg/daemon"
-	"github.com/spf13/cobra"
 )
 
 // isLogFilePath returns true if the spec looks like a direct log file path
