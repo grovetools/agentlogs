@@ -171,17 +171,17 @@ func WithCaptureSocket(socket string) CaptureOption {
 	}
 }
 
-// CapturePane runs tmux capture-pane and returns raw output.
+// CapturePane captures pane output via the detected mux engine.
 func CapturePane(ctx context.Context, tmuxTarget string, opts ...CaptureOption) (string, error) {
 	cfg := &inputConfig{}
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
-	client, err := newTmuxClient(cfg)
+	engine, err := newMuxEngine(cfg)
 	if err != nil {
 		return "", err
 	}
 
-	return client.CapturePane(ctx, tmuxTarget)
+	return engine.CapturePane(ctx, tmuxTarget)
 }
