@@ -3,6 +3,7 @@ package agentstream
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -77,6 +78,11 @@ func waitForTranscript(ctx context.Context, opts DiscoverOptions) (string, error
 			path, err := DiscoverTranscript(opts)
 			if err == nil {
 				return path, nil
+			}
+			// An unsupported provider will never produce a transcript file;
+			// fail fast instead of polling until the timeout masks the cause.
+			if errors.Is(err, ErrUnsupportedProvider) {
+				return "", err
 			}
 		}
 	}

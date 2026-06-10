@@ -3,6 +3,7 @@ package agentstream
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,17 +18,29 @@ type DiscoverOptions struct {
 	AfterTime time.Time // Only transcripts modified after this time
 }
 
+// ErrUnsupportedProvider indicates the provider has no file-based transcript
+// discovery. It is permanent: callers polling DiscoverTranscript (e.g. waiting
+// for a transcript file to appear) should stop retrying when they see it.
+var ErrUnsupportedProvider = errors.New("transcript discovery not supported for provider")
+
 // DiscoverTranscript finds the most recent transcript file matching the options.
 // For Claude, it looks in ~/.claude/projects/<sanitized-path>/*.jsonl.
 // For Codex, it looks in ~/.codex/sessions/*.jsonl.
+// Opencode is NOT supported: it has no single transcript file to discover —
+// it persists fragmented message/part JSON files under
+// ~/.local/share/opencode/storage/, keyed by native session ID. Use the
+// session-based APIs (internal/provider.OpenCodeSource backed by the opencode
+// assembler) instead.
 func DiscoverTranscript(opts DiscoverOptions) (string, error) {
 	switch opts.Provider {
 	case "claude":
 		return discoverClaudeTranscript(opts)
 	case "codex":
 		return discoverCodexTranscript(opts)
+	case "opencode":
+		return "", fmt.Errorf("%w opencode: opencode does not write a single transcript file; it stores fragmented message/part files under ~/.local/share/opencode/storage/ keyed by session ID — use the opencode session APIs (assembler) instead. File-based discovery supports: claude, codex", ErrUnsupportedProvider)
 	default:
-		return "", fmt.Errorf("unsupported provider for transcript discovery: %s", opts.Provider)
+		return "", fmt.Errorf("%w %s: file-based discovery supports: claude, codex", ErrUnsupportedProvider, opts.Provider)
 	}
 }
 
