@@ -7,12 +7,15 @@ import (
 
 // UnifiedEntry represents a single transcript entry normalized across all providers.
 type UnifiedEntry struct {
-	Role      string         `json:"role"` // "user" or "assistant"
-	Timestamp time.Time      `json:"timestamp"`
-	MessageID string         `json:"messageID"`
-	Parts     []UnifiedPart  `json:"parts"`
-	Tokens    *UnifiedTokens `json:"tokens,omitempty"`
-	Provider  string         `json:"provider"` // "claude", "codex", "opencode"
+	Role        string         `json:"role"` // "user" or "assistant"
+	Timestamp   time.Time      `json:"timestamp"`
+	MessageID   string         `json:"messageID"`
+	Parts       []UnifiedPart  `json:"parts"`
+	Tokens      *UnifiedTokens `json:"tokens,omitempty"`
+	Provider    string         `json:"provider"`              // "claude", "codex", "opencode", "journal"
+	AgentID     string         `json:"agentID,omitempty"`     // Subagent ID for sidechain/workflow transcripts
+	IsSidechain bool           `json:"isSidechain,omitempty"` // True for subagent (sidechain) entries
+	PromptID    string         `json:"promptID,omitempty"`    // Prompt ID linking sidechain entries to their spawning prompt
 }
 
 // UnifiedPart represents a component of a message.
