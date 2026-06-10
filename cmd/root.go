@@ -18,6 +18,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newReadCmd())
 	rootCmd.AddCommand(newGetSessionInfoCmd())
 	rootCmd.AddCommand(newStreamCmd())
+	rootCmd.AddCommand(newWorkflowCmd())
 	rootCmd.AddCommand(newTokensCmd())
 	rootCmd.AddCommand(NewVersionCmd())
 

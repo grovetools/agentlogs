@@ -51,10 +51,13 @@ func (n *ClaudeNormalizer) Flush() []*UnifiedEntry {
 func (n *ClaudeNormalizer) NormalizeLine(line []byte) (*UnifiedEntry, error) {
 	// Parse the raw entry structure
 	var raw struct {
-		Type      string          `json:"type"`
-		Timestamp time.Time       `json:"timestamp"`
-		SessionID string          `json:"sessionId"`
-		Message   json.RawMessage `json:"message"`
+		Type        string          `json:"type"`
+		Timestamp   time.Time       `json:"timestamp"`
+		SessionID   string          `json:"sessionId"`
+		AgentID     string          `json:"agentId"`
+		IsSidechain bool            `json:"isSidechain"`
+		PromptID    string          `json:"promptId"`
+		Message     json.RawMessage `json:"message"`
 	}
 	if err := json.Unmarshal(line, &raw); err != nil {
 		return nil, err
@@ -66,10 +69,13 @@ func (n *ClaudeNormalizer) NormalizeLine(line []byte) (*UnifiedEntry, error) {
 	}
 
 	entry := &UnifiedEntry{
-		Role:      raw.Type,
-		Timestamp: raw.Timestamp,
-		Provider:  "claude",
-		Parts:     []UnifiedPart{},
+		Role:        raw.Type,
+		Timestamp:   raw.Timestamp,
+		Provider:    "claude",
+		AgentID:     raw.AgentID,
+		IsSidechain: raw.IsSidechain,
+		PromptID:    raw.PromptID,
+		Parts:       []UnifiedPart{},
 	}
 
 	// Parse message content

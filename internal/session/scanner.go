@@ -21,11 +21,20 @@ import (
 	"github.com/grovetools/core/pkg/workspace"
 )
 
+// ScanOptions configures scanner behavior.
+type ScanOptions struct {
+	// IncludeSubagents includes agent sidechain transcripts (agent-*.jsonl)
+	// in scan results. These are Claude's internal sub-agents (e.g. workflow
+	// agents), not main sessions, so they are excluded by default.
+	IncludeSubagents bool
+}
+
 // Scanner is responsible for finding and parsing session transcript logs.
 type Scanner struct {
 	// useDaemon controls whether to query the daemon for live sessions.
 	// When true, the scanner will try the daemon first for faster lookups.
 	useDaemon bool
+	opts      ScanOptions
 }
 
 // NewScanner creates a new session scanner that queries the daemon by default.
@@ -37,6 +46,11 @@ func NewScanner() *Scanner {
 // Use this for offline mode or when the daemon is known to be unavailable.
 func NewScannerWithoutDaemon() *Scanner {
 	return &Scanner{useDaemon: false}
+}
+
+// NewScannerWithOptions creates a daemon-backed scanner with explicit options.
+func NewScannerWithOptions(opts ScanOptions) *Scanner {
+	return &Scanner{useDaemon: true, opts: opts}
 }
 
 // loadSessionsFromDaemon queries the daemon for active sessions and converts them to SessionInfo.
@@ -227,13 +241,15 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	claudePattern := filepath.Join(homeDir, ".claude", "projects", "*", "*.jsonl")
 	claudeMatchesRaw, _ := filepath.Glob(claudePattern)
 
-	// Filter out agent sidechain files (e.g., agent-*.jsonl)
-	// These are Claude's internal sub-agents, not main sessions
+	// Filter out agent sidechain files (e.g., agent-*.jsonl) unless
+	// explicitly requested. These are Claude's internal sub-agents, not
+	// main sessions.
 	var claudeMatches []string
 	for _, match := range claudeMatchesRaw {
-		if !strings.HasPrefix(filepath.Base(match), "agent-") {
-			claudeMatches = append(claudeMatches, match)
+		if !s.opts.IncludeSubagents && strings.HasPrefix(filepath.Base(match), "agent-") {
+			continue
 		}
+		claudeMatches = append(claudeMatches, match)
 	}
 
 	codexPattern := filepath.Join(homeDir, ".codex", "sessions", "*", "*", "*", "*.jsonl")
