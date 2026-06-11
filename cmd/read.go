@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	core_config "github.com/grovetools/core/config"
@@ -31,9 +32,13 @@ func newReadCmd() *cobra.Command {
 			spec := args[0]
 			detailFlag, _ := cmd.Flags().GetString("detail")
 			jsonOutput, _ := cmd.Flags().GetBool("json")
+			styleFlag, _ := cmd.Flags().GetString("style")
+			style, err := display.ParseRenderStyle(styleFlag)
+			if err != nil {
+				return err
+			}
 
 			var sessionInfo *session.SessionInfo
-			var err error
 
 			// Fast path: if spec is an actual log file path (not a plan/job spec),
 			// read it directly. Uses isLogFilePath to avoid matching plan markdown
@@ -159,7 +164,10 @@ func newReadCmd() *cobra.Command {
 					PrettyOnly().
 					Emit()
 			} else {
-				display.DisplayUnifiedTranscript(entries, detailLevel, toolFormatters)
+				renderOpts := display.RenderOptions{Style: style, DetailLevel: detailLevel}
+				if err := display.RenderUnifiedTranscript(os.Stdout, entries, renderOpts, toolFormatters); err != nil {
+					return fmt.Errorf("failed to render transcript: %w", err)
+				}
 			}
 
 			return nil
@@ -167,6 +175,7 @@ func newReadCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("detail", "", "Set detail level for output ('summary' or 'full'). Overrides config.")
+	cmd.Flags().String("style", "terminal", "Output style: 'terminal' (colors/icons) or 'markdown' (environment-independent)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format with additional metadata")
 	return cmd
 }

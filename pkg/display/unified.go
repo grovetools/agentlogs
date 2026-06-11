@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/grovetools/core/tui/theme"
 
 	"github.com/grovetools/agentlogs/pkg/formatters"
 	"github.com/grovetools/agentlogs/pkg/transcript"
@@ -20,30 +18,17 @@ const (
 	treeChar = "⎿" // Tree connector for sub-content
 )
 
-// FormatUnifiedEntry renders a single UnifiedEntry to a string.
-// It captures the output of DisplayUnifiedEntry.
+// FormatUnifiedEntry renders a single UnifiedEntry to a string in terminal
+// style.
+//
+// Deprecated: use RenderUnifiedEntry with a bytes.Buffer instead.
 func FormatUnifiedEntry(
 	entry transcript.UnifiedEntry,
 	detailLevel string,
 	toolFormatters map[string]formatters.ToolFormatter,
 ) string {
-	// Capture stdout
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return ""
-	}
-	os.Stdout = w
-
-	DisplayUnifiedEntry(entry, detailLevel, toolFormatters)
-
-	w.Close()
-	os.Stdout = old
-
 	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	r.Close()
-
+	_ = RenderUnifiedEntry(&buf, entry, RenderOptions{Style: StyleTerminal, DetailLevel: detailLevel}, toolFormatters)
 	return strings.TrimRight(buf.String(), "\n")
 }
 
@@ -57,177 +42,14 @@ func DefaultToolFormatters() map[string]formatters.ToolFormatter {
 	}
 }
 
-// DisplayUnifiedEntry renders a single UnifiedEntry with consistent formatting.
+// DisplayUnifiedEntry renders a single UnifiedEntry to stdout in terminal
+// style. Thin wrapper over RenderUnifiedEntry.
 func DisplayUnifiedEntry(
 	entry transcript.UnifiedEntry,
 	detailLevel string,
 	toolFormatters map[string]formatters.ToolFormatter,
 ) {
-	robotToolStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Green)
-	robotTextStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.LightText)
-	userStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.Yellow)
-	mutedStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.MutedText)
-
-	robotToolIcon := robotToolStyle.Render(theme.IconRobot) // Green for tool calls
-	robotTextIcon := robotTextStyle.Render(theme.IconRobot) // White for text responses
-	userIcon := userStyle.Render(theme.IconChevron)
-	tree := mutedStyle.Render(treeChar)
-
-	// For user messages, display text content and tool results
-	if entry.Role == "user" {
-		var textParts []string
-		var hasToolResults bool
-
-		for _, part := range entry.Parts {
-			switch part.Type {
-			case "text":
-				if content, ok := part.Content.(transcript.UnifiedTextContent); ok && content.Text != "" {
-					textParts = append(textParts, content.Text)
-				} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-					if text, ok := contentMap["text"].(string); ok && text != "" {
-						textParts = append(textParts, text)
-					}
-				}
-			case "tool_result":
-				// Show tool results with tree connector (these belong to previous tool call)
-				var output string
-				if content, ok := part.Content.(transcript.UnifiedToolResult); ok {
-					output = content.Output
-				} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-					output = getStringField(contentMap, "output")
-				}
-				if output != "" {
-					hasToolResults = true
-					// For long outputs (like file reads), show a summary
-					lines := strings.Split(strings.TrimSpace(output), "\n")
-					if len(lines) > 5 {
-						// Show compact summary
-						fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
-					} else {
-						// Show short output directly
-						for i, line := range lines {
-							if strings.TrimSpace(line) != "" {
-								if i == 0 {
-									fmt.Printf("  %s  %s\n", tree, line)
-								} else {
-									fmt.Printf("     %s\n", line)
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-
-		if hasToolResults {
-			fmt.Println() // Blank line after tool results
-		}
-
-		if len(textParts) > 0 {
-			fmt.Printf("%s %s\n\n", userIcon, strings.Join(textParts, "\n"))
-		}
-		return
-	}
-
-	// For assistant messages, render parts in order to preserve interleaving
-	for _, part := range entry.Parts {
-		switch part.Type {
-		case "text":
-			var text string
-			if content, ok := part.Content.(transcript.UnifiedTextContent); ok {
-				text = content.Text
-			} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-				text, _ = contentMap["text"].(string)
-			}
-			if text != "" {
-				fmt.Printf("%s %s\n\n", robotTextIcon, text)
-			}
-
-		case "tool_call":
-			var toolCall transcript.UnifiedToolCall
-			if content, ok := part.Content.(transcript.UnifiedToolCall); ok {
-				toolCall = content
-			} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-				toolCall = transcript.UnifiedToolCall{
-					ID:     getStringField(contentMap, "id"),
-					Name:   getStringField(contentMap, "name"),
-					Status: getStringField(contentMap, "status"),
-					Output: getStringField(contentMap, "output"),
-					Title:  getStringField(contentMap, "title"),
-					Diff:   getStringField(contentMap, "diff"),
-				}
-				if input, ok := contentMap["input"].(map[string]interface{}); ok {
-					toolCall.Input = input
-				}
-			}
-
-			toolDisplay := formatUnifiedToolCall(toolCall, detailLevel, toolFormatters, mutedStyle)
-			if toolDisplay != "" {
-				fmt.Printf("%s %s\n", robotToolIcon, toolDisplay)
-			}
-
-			// Show output with tree connector (for embedded output like OpenCode or merged Claude)
-			if toolCall.Output != "" {
-				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, mutedStyle)
-				if outputDisplay != "" {
-					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(outputDisplay))
-				}
-				// Add blank line after embedded output (OpenCode or merged Claude results)
-				fmt.Println()
-			}
-
-		case "reasoning":
-			var text string
-			if content, ok := part.Content.(transcript.UnifiedReasoning); ok {
-				text = content.Text
-			} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-				text = getStringField(contentMap, "text")
-			}
-			if text != "" {
-				// Format thinking with "∴ Thinking…" header in italic
-				italicMuted := mutedStyle.Italic(true)
-				fmt.Println(italicMuted.Render("∴ Thinking…"))
-				fmt.Println() // Blank line after header
-				for _, line := range strings.Split(text, "\n") {
-					if strings.TrimSpace(line) != "" {
-						fmt.Println(italicMuted.Render("  " + line))
-					} else {
-						fmt.Println() // Preserve paragraph breaks
-					}
-				}
-				fmt.Println() // Blank line after thinking
-			}
-
-		case "tool_result":
-			// Tool results shown with tree connector (only first line gets ⎿)
-			var output string
-			if content, ok := part.Content.(transcript.UnifiedToolResult); ok {
-				output = content.Output
-			} else if contentMap, ok := part.Content.(map[string]interface{}); ok {
-				output = getStringField(contentMap, "output")
-			}
-			if output != "" {
-				lines := strings.Split(strings.TrimSpace(output), "\n")
-				if len(lines) > 5 {
-					// Compact summary for long output
-					fmt.Printf("  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
-				} else {
-					firstLine := true
-					for _, line := range lines {
-						if strings.TrimSpace(line) != "" {
-							if firstLine {
-								fmt.Printf("  %s  %s\n", tree, line)
-								firstLine = false
-							} else {
-								fmt.Printf("     %s\n", line)
-							}
-						}
-					}
-				}
-			}
-			fmt.Println() // Blank line after tool result (even if empty)
-		}
-	}
+	_ = RenderUnifiedEntry(os.Stdout, entry, RenderOptions{Style: StyleTerminal, DetailLevel: detailLevel}, toolFormatters)
 }
 
 // getStringField safely extracts a string field from a map.
@@ -379,13 +201,12 @@ func shortenPath(path string) string {
 	return shortened
 }
 
-// DisplayUnifiedTranscript displays a full transcript.
+// DisplayUnifiedTranscript displays a full transcript to stdout in terminal
+// style. Thin wrapper over RenderUnifiedTranscript.
 func DisplayUnifiedTranscript(
 	entries []transcript.UnifiedEntry,
 	detailLevel string,
 	toolFormatters map[string]formatters.ToolFormatter,
 ) {
-	for _, entry := range entries {
-		DisplayUnifiedEntry(entry, detailLevel, toolFormatters)
-	}
+	_ = RenderUnifiedTranscript(os.Stdout, entries, RenderOptions{Style: StyleTerminal, DetailLevel: detailLevel}, toolFormatters)
 }

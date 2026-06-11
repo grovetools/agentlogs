@@ -29,6 +29,11 @@ func newWorkflowCmd() *cobra.Command {
 				return err
 			}
 			jsonOutput, _ := cmd.Flags().GetBool("json")
+			styleFlag, _ := cmd.Flags().GetString("style")
+			style, err := display.ParseRenderStyle(styleFlag)
+			if err != nil {
+				return err
+			}
 
 			ch, err := agentstream.StreamWorkflow(cmd.Context(), sessionDir)
 			if err != nil {
@@ -38,6 +43,7 @@ func newWorkflowCmd() *cobra.Command {
 			jsonEncoder := json.NewEncoder(os.Stdout)
 			toolFormatters := display.DefaultToolFormatters()
 			agentStyle := lipgloss.NewStyle().Foreground(theme.DefaultColors.MutedText)
+			renderOpts := display.RenderOptions{Style: style, DetailLevel: "full"}
 			lastAgent := ""
 
 			for entry := range ch {
@@ -46,15 +52,22 @@ func newWorkflowCmd() *cobra.Command {
 					continue
 				}
 				if entry.AgentID != lastAgent {
-					fmt.Println(agentStyle.Render(fmt.Sprintf("── agent %s [%s] ──", entry.AgentID, entry.Provider)))
+					if style == display.StyleMarkdown {
+						fmt.Printf("## Agent %s [%s]\n\n", entry.AgentID, entry.Provider)
+					} else {
+						fmt.Println(agentStyle.Render(fmt.Sprintf("── agent %s [%s] ──", entry.AgentID, entry.Provider)))
+					}
 					lastAgent = entry.AgentID
 				}
-				display.DisplayUnifiedEntry(entry, "full", toolFormatters)
+				if err := display.RenderUnifiedEntry(os.Stdout, entry, renderOpts, toolFormatters); err != nil {
+					return fmt.Errorf("failed to render entry: %w", err)
+				}
 			}
 
 			return nil
 		},
 	}
+	cmd.Flags().String("style", "terminal", "Output style: 'terminal' (colors/icons) or 'markdown' (environment-independent)")
 	return cmd
 }
 
