@@ -1,12 +1,14 @@
 package display
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/grovetools/core/tui/theme"
 
 	"github.com/grovetools/agentlogs/pkg/formatters"
@@ -82,6 +84,28 @@ func RenderUnifiedTranscript(
 		}
 	}
 	return nil
+}
+
+// RenderUnifiedTranscriptPlain renders a full transcript in the terminal/glyph
+// style (theme icons + summarized tool rows via the formatters registry) but
+// strips ANSI color codes, producing durable, environment-independent output
+// suitable for .md files. This is the canonical renderer for archived
+// transcripts: it gives the same summarized `aglogs read` experience as the
+// interactive terminal while remaining color/TTY-independent on disk (theme
+// icons are plain unicode and survive stripping). Pass DefaultToolFormatters()
+// for the standard summarized tool rows.
+func RenderUnifiedTranscriptPlain(
+	w io.Writer,
+	entries []transcript.UnifiedEntry,
+	detailLevel string,
+	toolFormatters map[string]formatters.ToolFormatter,
+) error {
+	var buf bytes.Buffer
+	if err := RenderUnifiedTranscript(&buf, entries, RenderOptions{Style: StyleTerminal, DetailLevel: detailLevel}, toolFormatters); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, ansi.Strip(buf.String()))
+	return err
 }
 
 // --- Terminal style ---
