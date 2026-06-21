@@ -147,6 +147,16 @@ func readJournal(path string, run *WorkflowRun) error {
 	return nil
 }
 
+// ReadAgentTranscript batch-normalizes a single agent-<id>.jsonl transcript
+// file into unified entries, tagging entries with agentID when the line didn't
+// carry one. It mirrors the per-agent parse the workflow reader does for each
+// transcript in a run dir, exported for callers that need to render one flat
+// (non-workflow) agent transcript. Malformed lines are skipped; only a file
+// open/read error is returned.
+func ReadAgentTranscript(path, agentID string) ([]transcript.UnifiedEntry, error) {
+	return readAgentTranscript(path, agentID)
+}
+
 // readAgentTranscript batch-normalizes one agent-<id>.jsonl with a fresh
 // ClaudeNormalizer (normalizers are stateful: tool-call buffering), tagging
 // entries with agentID when the transcript line didn't carry one. Malformed
