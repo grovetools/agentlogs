@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"time"
 
@@ -63,6 +64,11 @@ func newUsageCmd() *cobra.Command {
 		ccusageJSON bool
 		sessionID   string
 		sinceDur    string
+		blocks      bool
+		watch       bool
+		blockHours  float64
+		watchEvery  string
+		limit       int64
 	)
 
 	cmd := cli.NewStandardCommand("usage", "Show token usage and cost across sessions")
@@ -77,11 +83,53 @@ totals.
 Use --session <id> to roll up a single job (parent transcript plus its ad-hoc
 Task subagents and workflow agents, matched by inner session id).
 
+Use --blocks to group usage into rolling 5-hour blocks with burn rate and a
+linear projection for the active block. Add --watch to refresh that block view
+live. --limit <tokens> sets a config-defined denominator (there is no live
+limits API) so the projection shows a percent-of-limit and OK/WARNING/EXCEEDS.
+
 --ccusage-json emits the exact ccusage 'claude session --json' document shape
 (path-derived session grouping) for the acceptance gate.`
 	cmd.Args = cobra.NoArgs
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		duration := usage.DefaultSessionBlockDuration
+		if blockHours > 0 {
+			duration = time.Duration(blockHours * float64(time.Hour))
+		}
+
+		// Live block watcher: tail parent + open agent files, redraw on a timer.
+		if watch {
+			every := 2 * time.Second
+			if watchEvery != "" {
+				d, err := time.ParseDuration(watchEvery)
+				if err != nil {
+					return fmt.Errorf("invalid --watch-interval duration %q: %w", watchEvery, err)
+				}
+				every = d
+			}
+			return runUsageWatch(cmd.Context(), sessionID, duration, limit, every)
+		}
+
+		// Block view (5-hour windows + burn rate + projection).
+		if blocks {
+			var reports []usage.BlockReport
+			var err error
+			if sessionID != "" {
+				reports, err = usage.SessionBlocks(nil, sessionID, usage.CostModeCalculate, duration)
+			} else {
+				reports, err = usage.ProjectBlocks(nil, usage.CostModeCalculate, duration)
+			}
+			if err != nil {
+				return fmt.Errorf("could not compute usage blocks: %w", err)
+			}
+			if jsonOutput {
+				return printJSON(reports)
+			}
+			printBlocks(os.Stdout, reports, limit)
+			return nil
+		}
+
 		var since time.Time
 		if sinceDur != "" {
 			d, err := time.ParseDuration(sinceDur)
@@ -123,6 +171,11 @@ Task subagents and workflow agents, matched by inner session id).
 	cmd.Flags().BoolVar(&ccusageJSON, "ccusage-json", false, "Output the ccusage 'claude session --json' document shape")
 	cmd.Flags().StringVar(&sessionID, "session", "", "Roll up a single session (parent + subagents + workflow)")
 	cmd.Flags().StringVar(&sinceDur, "since", "", "Only count entries newer than this duration (e.g. 24h, 168h)")
+	cmd.Flags().BoolVar(&blocks, "blocks", false, "Group usage into rolling 5-hour blocks with burn rate and projection")
+	cmd.Flags().BoolVar(&watch, "watch", false, "Live-tail the active block (burn rate, projection); refreshes on a timer")
+	cmd.Flags().Float64Var(&blockHours, "block-hours", 0, "Rolling block window in hours (default 5)")
+	cmd.Flags().StringVar(&watchEvery, "watch-interval", "", "Refresh interval for --watch (default 2s)")
+	cmd.Flags().Int64Var(&limit, "limit", 0, "Config-defined token denominator for the block projection (no live limits API)")
 
 	return cmd
 }
