@@ -78,6 +78,11 @@ type Summary struct {
 	FirstActivity  time.Time    `json:"first_activity"`
 	LastActivity   time.Time    `json:"last_activity"`
 	MessageCount   int          `json:"message_count"`
+	// ContextSize is the peak single-turn prompt size
+	// (input + cache_read + cache_creation) seen across the session — the
+	// analogue of Claude Code's `/context` window occupancy, as opposed to the
+	// cache-read-inflated cumulative Usage.Total(). Zero on legacy artifacts.
+	ContextSize int64 `json:"context_size,omitempty"`
 }
 
 // dedupe folds entries by the ccusage (message.id, request_id) rule with the
@@ -160,6 +165,10 @@ func summarize(sessionID, projectPath string, entries []loadedEntry, agentIDs []
 		s.MessageCount++
 		if missing != "" {
 			s.MissingPricing = true
+		}
+		// Peak prompt size sent in any single turn ≈ Claude Code's /context.
+		if promptSize := int64(e.Usage.InputTokens) + int64(e.Usage.CacheReadInputTokens) + int64(cacheCreationTokenCount(e.Usage)); promptSize > s.ContextSize {
+			s.ContextSize = promptSize
 		}
 		if !e.Timestamp.IsZero() {
 			if s.FirstActivity.IsZero() || e.Timestamp.Before(s.FirstActivity) {

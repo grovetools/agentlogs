@@ -262,6 +262,7 @@ func printSummaryText(s usage.Summary) {
 	fmt.Printf("Cache creation:  %d\n", s.Usage.CacheWrite5m+s.Usage.CacheWrite1h)
 	fmt.Printf("Cache read:      %d\n", s.Usage.CacheRead)
 	fmt.Printf("Total tokens:    %d\n", s.Usage.Total())
+	fmt.Printf("Context size:    %d\n", s.ContextSize)
 	fmt.Printf("Cost (USD):      $%.4f\n", s.CostUSD)
 	if s.MissingPricing {
 		fmt.Println("(warning: some models had no pricing; cost is a lower bound)")
