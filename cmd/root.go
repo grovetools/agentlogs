@@ -20,6 +20,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStreamCmd())
 	rootCmd.AddCommand(newWorkflowCmd())
 	rootCmd.AddCommand(newTokensCmd())
+	rootCmd.AddCommand(newUsageCmd())
 	rootCmd.AddCommand(NewVersionCmd())
 
 	return rootCmd
