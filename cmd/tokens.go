@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,15 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/grovetools/agentlogs/internal/session"
+	"github.com/grovetools/agentlogs/pkg/usage"
 )
-
-// TokenUsage represents the usage stats from a Claude API response
-type TokenUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-}
 
 // TokenStats aggregates token statistics for a session
 type TokenStats struct {
@@ -84,82 +76,22 @@ showing both cumulative totals and the latest context window size.`
 			}
 		}
 
-		// Read and parse the log file
-		file, err := os.Open(sessionInfo.LogFilePath)
+		fileStats, err := usage.FileTokenStats(sessionInfo.LogFilePath)
 		if err != nil {
-			return err
+			return fmt.Errorf("error reading log file: %w", err)
 		}
-		defer file.Close()
 
 		stats := TokenStats{
-			SessionID: sessionInfo.SessionID,
-			Provider:  sessionInfo.Provider,
-		}
-
-		scanner := bufio.NewScanner(file)
-		const maxScanTokenSize = 1024 * 1024
-		buf := make([]byte, 0, 64*1024)
-		scanner.Buffer(buf, maxScanTokenSize)
-
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(line) == 0 {
-				continue
-			}
-
-			// Parse the JSON line to extract usage
-			var entry map[string]interface{}
-			if err := json.Unmarshal(line, &entry); err != nil {
-				continue
-			}
-
-			// Look for message.usage
-			message, ok := entry["message"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			usage, ok := message["usage"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			stats.MessageCount++
-
-			// Extract token counts
-			if v, ok := usage["input_tokens"].(float64); ok {
-				stats.TotalInputTokens += int(v)
-			}
-			if v, ok := usage["output_tokens"].(float64); ok {
-				stats.TotalOutputTokens += int(v)
-				stats.LatestOutputTokens = int(v)
-			}
-			if v, ok := usage["cache_creation_input_tokens"].(float64); ok {
-				stats.TotalCacheCreation += int(v)
-			}
-			if v, ok := usage["cache_read_input_tokens"].(float64); ok {
-				stats.TotalCacheRead += int(v)
-				stats.LatestCacheReadTokens = int(v)
-			}
-
-			// Calculate latest context size (cache_read + cache_creation + input)
-			cacheRead := 0
-			cacheCreation := 0
-			input := 0
-			if v, ok := usage["cache_read_input_tokens"].(float64); ok {
-				cacheRead = int(v)
-			}
-			if v, ok := usage["cache_creation_input_tokens"].(float64); ok {
-				cacheCreation = int(v)
-			}
-			if v, ok := usage["input_tokens"].(float64); ok {
-				input = int(v)
-			}
-			stats.LatestContextSize = cacheRead + cacheCreation + input
-		}
-
-		if err := scanner.Err(); err != nil {
-			return fmt.Errorf("error reading log file: %w", err)
+			SessionID:             sessionInfo.SessionID,
+			Provider:              sessionInfo.Provider,
+			MessageCount:          fileStats.MessageCount,
+			TotalInputTokens:      fileStats.TotalInputTokens,
+			TotalOutputTokens:     fileStats.TotalOutputTokens,
+			TotalCacheCreation:    fileStats.TotalCacheCreation,
+			TotalCacheRead:        fileStats.TotalCacheRead,
+			LatestContextSize:     fileStats.LatestContextSize,
+			LatestCacheReadTokens: fileStats.LatestCacheReadTokens,
+			LatestOutputTokens:    fileStats.LatestOutputTokens,
 		}
 
 		// Output results

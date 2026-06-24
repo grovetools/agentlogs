@@ -18,6 +18,14 @@ type TranscriptEntry struct {
 	UserType   string    `json:"userType"`
 	UUID       string    `json:"uuid"`
 	ParentUUID string    `json:"parentUuid"`
+	// RequestID is the Claude API request id (top-level "requestId" field).
+	// It is the second component of the (message.id, request_id) usage dedup
+	// key; sidechain logs replay parent messages with new request ids, so it
+	// disambiguates genuinely-distinct billed calls from replays.
+	RequestID string `json:"requestId"`
+	// IsSidechain marks entries written by Task/subagent sidechains. The usage
+	// dedup prefers the non-sidechain copy of a replayed message.
+	IsSidechain bool `json:"isSidechain"`
 }
 
 // Message represents a Claude message
@@ -40,11 +48,21 @@ type Content struct {
 
 // Usage represents token usage information
 type Usage struct {
-	InputTokens              int    `json:"input_tokens"`
-	OutputTokens             int    `json:"output_tokens"`
-	CacheCreationInputTokens int    `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int    `json:"cache_read_input_tokens"`
-	ServiceTier              string `json:"service_tier"`
+	InputTokens              int            `json:"input_tokens"`
+	OutputTokens             int            `json:"output_tokens"`
+	CacheCreationInputTokens int            `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int            `json:"cache_read_input_tokens"`
+	ServiceTier              string         `json:"service_tier"`
+	CacheCreation            *CacheCreation `json:"cache_creation,omitempty"`
+}
+
+// CacheCreation is the optional per-duration split of cache-creation tokens.
+// When present, 1h tokens are billed at 2x the input rate while 5m tokens use
+// the base cache-write rate; when absent the flat CacheCreationInputTokens is
+// treated wholly as 5m. Mirrors ccusage's cache_creation handling.
+type CacheCreation struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
 }
 
 // ExtractedMessage represents a simplified message for storage
