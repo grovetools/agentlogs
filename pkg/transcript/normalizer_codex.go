@@ -45,9 +45,22 @@ func (n *CodexNormalizer) NormalizeLine(line []byte) (*UnifiedEntry, error) {
 		entry.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
 	}
 
-	// Handle event_msg types (agent_reasoning, agent_message)
+	// Handle event_msg types (agent_reasoning, agent_message, token_count)
 	if topLevelType == "event_msg" {
 		switch entryType {
+		case "token_count":
+			// Codex reports usage on a dedicated end-of-turn event rather
+			// than on the message itself. Emit a parts-less entry carrying
+			// the last turn's usage; renderers skip entries without parts,
+			// while JSON/stream consumers get the token figures.
+			tc, ok := ParseCodexTokenCountLine(line)
+			if !ok {
+				return nil, nil
+			}
+			entry.Role = "assistant"
+			tokens := tc.Last
+			entry.Tokens = &tokens
+			return entry, nil
 		case "agent_reasoning":
 			entry.Role = "assistant"
 			if text, ok := payload["text"].(string); ok {
@@ -116,18 +129,17 @@ func (n *CodexNormalizer) NormalizeLine(line []byte) (*UnifiedEntry, error) {
 			argsStr, _ := payload["arguments"].(string)
 			callID, _ := payload["call_id"].(string)
 
-			// Parse the arguments JSON
+			// Preserve the full arguments object. Codex serializes function
+			// call arguments as a JSON string (codex-rs/protocol/src/models.rs
+			// ResponseItem::FunctionCall); parse it into a map so every key
+			// survives — shell calls keep command/workdir/timeout_ms, non-shell
+			// tools keep their whole input. If the string isn't valid JSON,
+			// keep it raw under "arguments" rather than dropping it.
 			var args map[string]interface{}
-			_ = json.Unmarshal([]byte(argsStr), &args)
-
-			// For shell commands, extract command for display
-			var command string
-			if cmdArr, ok := args["command"].([]interface{}); ok && len(cmdArr) > 0 {
-				// Format: ["bash", "-lc", "actual command"]
-				if len(cmdArr) >= 3 {
-					command, _ = cmdArr[2].(string)
-				} else {
-					command, _ = cmdArr[len(cmdArr)-1].(string)
+			if err := json.Unmarshal([]byte(argsStr), &args); err != nil || args == nil {
+				args = map[string]interface{}{}
+				if argsStr != "" {
+					args["arguments"] = argsStr
 				}
 			}
 
@@ -136,7 +148,7 @@ func (n *CodexNormalizer) NormalizeLine(line []byte) (*UnifiedEntry, error) {
 				Content: UnifiedToolCall{
 					ID:    callID,
 					Name:  name,
-					Input: map[string]interface{}{"command": command},
+					Input: args,
 				},
 			})
 

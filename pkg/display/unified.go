@@ -146,12 +146,14 @@ func capitalizeFirst(s string) string {
 func extractKeyArg(tool transcript.UnifiedToolCall) string {
 	// Check common parameter names in order of preference
 	if cmd, ok := tool.Input["command"].(string); ok {
-		// For commands, show a truncated version
-		cmd = strings.TrimSpace(cmd)
-		if len(cmd) > 60 {
-			return cmd[:57] + "..."
+		return truncateCommand(cmd)
+	}
+
+	// Codex shell calls carry command as an argv array (["bash","-lc","cmd"]).
+	if cmdArr, ok := tool.Input["command"].([]interface{}); ok && len(cmdArr) > 0 {
+		if cmd := commandArrayString(cmdArr); cmd != "" {
+			return truncateCommand(cmd)
 		}
-		return cmd
 	}
 
 	if filePath, ok := tool.Input["file_path"].(string); ok {
@@ -178,6 +180,35 @@ func extractKeyArg(tool transcript.UnifiedToolCall) string {
 	}
 
 	return ""
+}
+
+// truncateCommand trims and caps a shell command for inline display.
+func truncateCommand(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if len(cmd) > 60 {
+		return cmd[:57] + "..."
+	}
+	return cmd
+}
+
+// commandArrayString renders a codex-style argv command array for display.
+// The ["bash","-lc","actual command"] shape shows just the actual command;
+// other shapes join the argv with spaces.
+func commandArrayString(cmdArr []interface{}) string {
+	if len(cmdArr) >= 3 {
+		if flag, ok := cmdArr[1].(string); ok && (flag == "-lc" || flag == "-c") {
+			if cmd, ok := cmdArr[2].(string); ok {
+				return cmd
+			}
+		}
+	}
+	parts := make([]string, 0, len(cmdArr))
+	for _, c := range cmdArr {
+		if s, ok := c.(string); ok {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // shortenPath shortens a file path for display, keeping the filename and some context.

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 // DiscoverOptions configures transcript discovery.
@@ -25,7 +27,7 @@ var ErrUnsupportedProvider = errors.New("transcript discovery not supported for 
 
 // DiscoverTranscript finds the most recent transcript file matching the options.
 // For Claude, it looks in ~/.claude/projects/<sanitized-path>/*.jsonl.
-// For Codex, it looks in ~/.codex/sessions/*.jsonl.
+// For Codex, it looks in the date-nested ~/.codex/sessions/YYYY/MM/DD/*.jsonl.
 // Opencode is NOT supported: it has no single transcript file to discover —
 // it persists fragmented message/part JSON files under
 // ~/.local/share/opencode/storage/, keyed by native session ID. Use the
@@ -105,7 +107,9 @@ func discoverCodexTranscript(opts DiscoverOptions) (string, error) {
 	}
 
 	codexDir := filepath.Join(homeDir, ".codex", "sessions")
-	pattern := filepath.Join(codexDir, "*.jsonl")
+	// Codex nests rollout files by date (YYYY/MM/DD); the shared glob is the
+	// single definition of that layout.
+	pattern := transcript.CodexSessionsGlob(homeDir, "")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return "", fmt.Errorf("failed to glob codex sessions: %w", err)

@@ -358,7 +358,7 @@ func GetTranscriptPath(sessionID, provider string) (string, error) {
 	if provider == "codex" {
 		// Codex stores logs in ~/.codex/sessions/YYYY/MM/DD/*.jsonl
 		// We need to search recursively for files containing the session ID
-		pattern = fmt.Sprintf("%s/.codex/sessions/*/*/*/*%s*.jsonl", homeDir, sessionID)
+		pattern = CodexSessionsGlob(homeDir, sessionID)
 	} else {
 		// Default to Claude format
 		pattern = fmt.Sprintf("%s/.claude/projects/*/%s.jsonl", homeDir, sessionID)

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grovetools/agentlogs/pkg/transcript"
 	"github.com/grovetools/core/config"
 	"github.com/grovetools/core/logging"
 	"github.com/grovetools/core/pkg/daemon"
@@ -252,7 +253,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		claudeMatches = append(claudeMatches, match)
 	}
 
-	codexPattern := filepath.Join(homeDir, ".codex", "sessions", "*", "*", "*", "*.jsonl")
+	codexPattern := transcript.CodexSessionsGlob(homeDir, "")
 	codexMatches, _ := filepath.Glob(codexPattern)
 
 	matches := append(claudeMatches, codexMatches...)
