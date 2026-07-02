@@ -51,12 +51,31 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 					Status:      session.Status,
 					PID:         session.PID,
 				}
-				// Daemon records don't carry LogFilePath; enrich from scanner so
-				// file-based providers can actually open the transcript.
+				// Daemon records don't carry LogFilePath. For opencode,
+				// follow the transcript pointer recorded in the session
+				// registry (native_session_id + opencode_storage_root)
+				// before resorting to a full scanner pass.
+				if session.Provider == "opencode" {
+					if p := resolveOpenCodePointer(session.ID); p != nil {
+						info.SessionID = p.SessionID
+						info.LogFilePath = p.LogFilePath
+					}
+				}
+				// Enrich from scanner so file-based providers can actually
+				// open the transcript.
 				enrichLogFilePath(info)
 				return info, nil
 			}
 		}
+	}
+
+	// Before the full scan, try the opencode transcript pointer: the grove
+	// opencode plugin records native_session_id + opencode_storage_root in
+	// the hooks session registry, so opencode specs (flow job id, native
+	// ses_* id, or plan/job) resolve without walking every provider's
+	// storage.
+	if info := resolveOpenCodePointer(spec); info != nil {
+		return info, nil
 	}
 
 	// Fall back to full scan

@@ -1,0 +1,8 @@
+{
+  "id": "prt_0003",
+  "sessionID": "ses_fixture01",
+  "messageID": "msg_0002",
+  "type": "patch",
+  "hash": "abc123def4567890",
+  "files": ["main.go", "main_test.go"]
+}

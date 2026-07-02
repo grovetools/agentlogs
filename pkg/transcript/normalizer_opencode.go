@@ -1,6 +1,8 @@
 package transcript
 
 import (
+	"fmt"
+
 	"github.com/grovetools/agentlogs/internal/opencode"
 )
 
@@ -69,12 +71,48 @@ func (n *OpenCodeNormalizer) NormalizeEntry(oc opencode.TranscriptEntry) *Unifie
 					},
 				})
 			}
+		case "patch":
+			// A patch part records the snapshot commit opencode created
+			// after a mutating turn ({hash, files}). Rendered as a
+			// tool_call-like part so viewers show the diff payload instead
+			// of silently dropping it.
+			if patchPart, ok := part.Content.(opencode.PatchPart); ok {
+				entry.Parts = append(entry.Parts, UnifiedPart{
+					Type: "tool_call",
+					Content: UnifiedToolCall{
+						ID:     part.ID,
+						Name:   "patch",
+						Status: "completed",
+						Input: map[string]interface{}{
+							"hash":  patchPart.Hash,
+							"files": patchPart.Files,
+						},
+						Title: patchTitle(patchPart),
+					},
+				})
+			}
 		case "step-start", "step-finish":
 			// Skip step markers in unified format (handled at display level if needed)
 		}
 	}
 
 	return entry
+}
+
+// patchTitle renders a short human-readable summary for a patch part.
+func patchTitle(p opencode.PatchPart) string {
+	hash := p.Hash
+	if len(hash) > 8 {
+		hash = hash[:8]
+	}
+	fileWord := "files"
+	if len(p.Files) == 1 {
+		fileWord = "file"
+	}
+	if hash == "" {
+		return fmt.Sprintf("patch (%d %s)", len(p.Files), fileWord)
+	}
+	return fmt.Sprintf("patch %s (%d %s)", hash, len(p.Files), fileWord)
 }
 
 // NormalizeAll converts a slice of OpenCode entries.
