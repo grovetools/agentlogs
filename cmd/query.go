@@ -3,10 +3,15 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	grovelogging "github.com/grovetools/core/logging"
 	"github.com/spf13/cobra"
 
+	"github.com/grovetools/agentlogs/internal/opencode"
+	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
@@ -22,13 +27,23 @@ func newQueryCmd() *cobra.Command {
 			role, _ := cmd.Flags().GetString("role")
 			jsonOutput, _ := cmd.Flags().GetBool("json")
 
+			// The historical Claude path-glob lookup runs first, unchanged;
+			// only when it misses is the tiered multi-provider resolver
+			// consulted (codex/pi/opencode session ids, flow job ids).
+			provider := "claude"
 			transcriptPath, err := transcript.GetTranscriptPathLegacy(sessionID)
 			if err != nil {
-				return fmt.Errorf("failed to find transcript: %w", err)
+				info, rerr := session.ResolveSessionInfo(sessionID)
+				if rerr != nil || info.LogFilePath == "" {
+					return fmt.Errorf("failed to find transcript: %w", err)
+				}
+				transcriptPath = info.LogFilePath
+				if info.Provider != "" {
+					provider = info.Provider
+				}
 			}
 
-			parser := transcript.NewParser()
-			messages, err := parser.ParseFile(transcriptPath)
+			messages, err := queryMessages(transcriptPath, provider)
 			if err != nil {
 				return fmt.Errorf("failed to parse transcript: %w", err)
 			}
@@ -88,4 +103,95 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().Bool("json", false, "Output in JSON format")
 
 	return cmd
+}
+
+// queryMessages extracts the messages of a resolved transcript, routed by
+// provider. Claude keeps the historical Parser.ParseFile chain; codex uses
+// the codex-shaped parser; pi and opencode go through their normalizers
+// (linearized active branch for pi, fragment assembly for opencode — path is
+// the session info file there) and flatten to the same ExtractedMessage
+// shape.
+func queryMessages(path, provider string) ([]transcript.ExtractedMessage, error) {
+	switch provider {
+	case "codex":
+		parser := transcript.NewParser()
+		messages, _, err := parser.ParseCodexFileFromOffset(path, 0)
+		return messages, err
+	case "pi":
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		entries, err := transcript.NormalizePiFile(f)
+		if err != nil {
+			return nil, err
+		}
+		return extractedFromUnified(entries), nil
+	case "opencode":
+		return opencodeQueryMessages(path)
+	default:
+		parser := transcript.NewParser()
+		return parser.ParseFile(path)
+	}
+}
+
+// extractedFromUnified flattens normalized entries into ExtractedMessages
+// (text parts joined; entries with no text are skipped).
+func extractedFromUnified(entries []transcript.UnifiedEntry) []transcript.ExtractedMessage {
+	var out []transcript.ExtractedMessage
+	for _, e := range entries {
+		var texts []string
+		for _, p := range e.Parts {
+			if tc, ok := p.Content.(transcript.UnifiedTextContent); ok && tc.Text != "" {
+				texts = append(texts, tc.Text)
+			}
+		}
+		if len(texts) == 0 {
+			continue
+		}
+		out = append(out, transcript.ExtractedMessage{
+			MessageID: e.MessageID,
+			Timestamp: e.Timestamp,
+			Role:      e.Role,
+			Content:   strings.Join(texts, "\n"),
+		})
+	}
+	return out
+}
+
+// opencodeQueryMessages assembles an opencode session's messages from its
+// session info file path (<storage>/session/<projectID>/<ses_...>.json).
+func opencodeQueryMessages(path string) ([]transcript.ExtractedMessage, error) {
+	sessionID := strings.TrimSuffix(filepath.Base(path), ".json")
+	// <storage>/session/<projectID>/<ses_...>.json -> <storage>
+	storageDir := filepath.Dir(filepath.Dir(filepath.Dir(path)))
+	assembler, err := opencode.NewAssemblerWithDir(storageDir)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := assembler.AssembleTranscript(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	var out []transcript.ExtractedMessage
+	for _, e := range entries {
+		var texts []string
+		for _, p := range e.Parts {
+			if tp, ok := p.Content.(opencode.TextPart); ok && tp.Text != "" {
+				texts = append(texts, tp.Text)
+			}
+		}
+		if len(texts) == 0 {
+			continue
+		}
+		out = append(out, transcript.ExtractedMessage{
+			SessionID: sessionID,
+			MessageID: e.MessageID,
+			Timestamp: e.Timestamp,
+			Role:      e.Role,
+			Content:   strings.Join(texts, "\n"),
+		})
+	}
+	return out, nil
 }

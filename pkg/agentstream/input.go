@@ -10,7 +10,8 @@ import (
 var inputLog = logging.NewUnifiedLogger("agentstream.input")
 
 type inputConfig struct {
-	socket string
+	socket    string
+	inputMode string
 }
 
 // InputOption configures input behavior.
@@ -23,11 +24,23 @@ func WithSocket(socket string) InputOption {
 	}
 }
 
-// SendInput sends keystrokes to an agent's mux session as a single
-// atomic send-keys invocation: Escape → i (enter insert mode) → text →
-// Enter (submit).
+// WithInputMode sets the interactive input mode of the target agent's UI:
+// "vim" prefixes the text with Escape→i (leave normal mode, enter insert —
+// Claude Code's vim keybindings, the historical default), anything else sends
+// the text as-is. The per-provider default lives in flow's agent provider
+// registry (AgentProviderSpec.DefaultInputMode); pass it through rather than
+// re-deriving it here.
+func WithInputMode(mode string) InputOption {
+	return func(c *inputConfig) {
+		c.inputMode = mode
+	}
+}
+
+// SendInput sends keystrokes to an agent's mux session as a single atomic
+// send-keys invocation: in vim input mode (the default, matching Claude
+// Code's UI) Escape → i → text → Enter; in standard mode just text → Enter.
 func SendInput(ctx context.Context, tmuxTarget, input string, opts ...InputOption) error {
-	cfg := &inputConfig{}
+	cfg := &inputConfig{inputMode: "vim"}
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -47,7 +60,11 @@ func SendInput(ctx context.Context, tmuxTarget, input string, opts ...InputOptio
 		return err
 	}
 
-	if err := engine.SendKeys(ctx, tmuxTarget, "Escape", "i", input, "Enter"); err != nil {
+	keys := []string{input, "Enter"}
+	if cfg.inputMode == "vim" {
+		keys = append([]string{"Escape", "i"}, keys...)
+	}
+	if err := engine.SendKeys(ctx, tmuxTarget, keys...); err != nil {
 		inputLog.Error("send-keys failed").
 			Err(err).
 			Field("target", tmuxTarget).

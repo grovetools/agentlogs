@@ -31,6 +31,14 @@ func loadBlockEntries(paths []string, mode CostMode, pm *PricingMap) []blockEntr
 		}
 		all = append(all, fileEntries...)
 	}
+	return blockEntriesFromLoaded(all, mode, pm)
+}
+
+// blockEntriesFromLoaded dedups and prices already-loaded entries into
+// timestamp-ordered block entries. Claude entries carry no native cost
+// (CostUSD nil), so their pricing is the historical calculate path; pi and
+// opencode entries use their provider-native cost (see EntryCost).
+func blockEntriesFromLoaded(all []loadedEntry, mode CostMode, pm *PricingMap) []blockEntry {
 	all = dedupe(all)
 
 	entries := make([]blockEntry, 0, len(all))
@@ -38,7 +46,7 @@ func loadBlockEntries(paths []string, mode CostMode, pm *PricingMap) []blockEntr
 		if e.Timestamp.IsZero() {
 			continue
 		}
-		cost, _ := EntryCost(e.Model, e.Usage, nil, mode, pm)
+		cost, _ := EntryCost(e.Model, e.Usage, e.CostUSD, mode, pm)
 		entries = append(entries, blockEntry{
 			Timestamp: e.Timestamp,
 			Usage:     usageFromTranscript(e.Usage),

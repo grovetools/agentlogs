@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/grovetools/core/cli"
@@ -69,19 +70,25 @@ func newUsageCmd() *cobra.Command {
 		blockHours  float64
 		watchEvery  string
 		limit       int64
+		providerCSV string
 	)
 
 	cmd := cli.NewStandardCommand("usage", "Show token usage and cost across sessions")
 	cmd.Use = "usage [flags]"
-	cmd.Long = `Aggregates token usage and cost across all Claude sessions.
+	cmd.Long = `Aggregates token usage and cost across coding-agent sessions.
 
-By default scans every session under ~/.claude/projects, dedups duplicate API
-responses (by message id + request id, with sidechain-replay fallback), prices
-each entry with a cache-aware 4-class pricer, and reports per-session and grand
-totals.
+By default scans every provider's local session store — Claude
+(~/.claude/projects), codex (~/.codex/sessions), pi (~/.pi/agent/sessions),
+and opencode (storage, via the fragment assembler) — dedups duplicate API
+responses (by message id + request id, with sidechain-replay fallback), and
+reports per-session and grand totals. Cost is the provider-native figure when
+one is recorded (pi per-message cost; opencode's cost field) and otherwise
+computed with the cache-aware 4-class pricer. --provider narrows the scan
+(e.g. --provider claude, or a comma list).
 
-Use --session <id> to roll up a single job (parent transcript plus its ad-hoc
-Task subagents and workflow agents, matched by inner session id).
+Use --session <id> to roll up a single job (for Claude: parent transcript
+plus its ad-hoc Task subagents and workflow agents, matched by inner session
+id; other providers roll up the matching session's entries).
 
 Use --blocks to group usage into rolling 5-hour blocks with burn rate and a
 linear projection for the active block. Add --watch to refresh that block view
@@ -89,10 +96,17 @@ live. --limit <tokens> sets a config-defined denominator (there is no live
 limits API) so the projection shows a percent-of-limit and OK/WARNING/EXCEEDS.
 
 --ccusage-json emits the exact ccusage 'claude session --json' document shape
-(path-derived session grouping) for the acceptance gate.`
+(path-derived session grouping) for the acceptance gate; it always scans
+Claude only, regardless of --provider.`
 	cmd.Args = cobra.NoArgs
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		providers, err := parseProviderFlag(providerCSV)
+		if err != nil {
+			return err
+		}
+		claudeOnly := len(providers) == 1 && providers[0] == "claude"
+
 		duration := usage.DefaultSessionBlockDuration
 		if blockHours > 0 {
 			duration = time.Duration(blockHours * float64(time.Hour))
@@ -108,25 +122,19 @@ limits API) so the projection shows a percent-of-limit and OK/WARNING/EXCEEDS.
 				}
 				every = d
 			}
-			return runUsageWatch(cmd.Context(), sessionID, duration, limit, every)
+			return runUsageWatch(cmd.Context(), sessionID, duration, limit, every, providers)
 		}
 
 		// Block view (5-hour windows + burn rate + projection).
 		if blocks {
-			var reports []usage.BlockReport
-			var err error
-			if sessionID != "" {
-				reports, err = usage.SessionBlocks(nil, sessionID, usage.CostModeCalculate, duration)
-			} else {
-				reports, err = usage.ProjectBlocks(nil, usage.CostModeCalculate, duration)
-			}
+			reports, err := usageBlockReports(sessionID, duration, providers)
 			if err != nil {
 				return fmt.Errorf("could not compute usage blocks: %w", err)
 			}
 			if jsonOutput {
 				return printJSON(reports)
 			}
-			printBlocks(os.Stdout, reports, limit)
+			printBlocks(os.Stdout, reports, limit, claudeOnly)
 			return nil
 		}
 
@@ -141,7 +149,16 @@ limits API) so the projection shows a percent-of-limit and OK/WARNING/EXCEEDS.
 
 		// Single-session rollup (product view): parent + ad-hoc + workflow.
 		if sessionID != "" {
-			s, err := usage.SummarizeSession(nil, sessionID, usage.CostModeCalculate)
+			var s usage.Summary
+			var err error
+			if claudeOnly {
+				// The historical Claude-only path, unchanged.
+				s, err = usage.SummarizeSession(nil, sessionID, usage.CostModeCalculate)
+			} else {
+				// Claude discovery first (same code path), non-claude sources
+				// only when it finds nothing.
+				s, err = usage.SummarizeSessionAcrossProviders(nil, sessionID, usage.CostModeCalculate)
+			}
 			if err != nil {
 				return fmt.Errorf("could not summarize session %q: %w", sessionID, err)
 			}
@@ -152,14 +169,27 @@ limits API) so the projection shows a percent-of-limit and OK/WARNING/EXCEEDS.
 			return nil
 		}
 
-		result, err := usage.ScanProjects(nil, usage.CostModeCalculate, since)
-		if err != nil {
-			return fmt.Errorf("could not scan projects: %w", err)
-		}
-
+		// The ccusage acceptance gate diffs against `ccusage claude session`;
+		// it is Claude-only by definition.
 		if ccusageJSON {
+			result, err := usage.ScanProjects(nil, usage.CostModeCalculate, since)
+			if err != nil {
+				return fmt.Errorf("could not scan projects: %w", err)
+			}
 			return printJSON(toCcusageReport(result))
 		}
+
+		var result usage.ScanResult
+		if claudeOnly {
+			// The historical Claude-only scan, unchanged.
+			result, err = usage.ScanProjects(nil, usage.CostModeCalculate, since)
+		} else {
+			result, err = usage.ScanUsage(providers, usage.CostModeCalculate, since)
+		}
+		if err != nil {
+			return fmt.Errorf("could not scan sessions: %w", err)
+		}
+
 		if jsonOutput {
 			return printJSON(result)
 		}
@@ -168,7 +198,7 @@ limits API) so the projection shows a percent-of-limit and OK/WARNING/EXCEEDS.
 	}
 
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
-	cmd.Flags().BoolVar(&ccusageJSON, "ccusage-json", false, "Output the ccusage 'claude session --json' document shape")
+	cmd.Flags().BoolVar(&ccusageJSON, "ccusage-json", false, "Output the ccusage 'claude session --json' document shape (Claude only)")
 	cmd.Flags().StringVar(&sessionID, "session", "", "Roll up a single session (parent + subagents + workflow)")
 	cmd.Flags().StringVar(&sinceDur, "since", "", "Only count entries newer than this duration (e.g. 24h, 168h)")
 	cmd.Flags().BoolVar(&blocks, "blocks", false, "Group usage into rolling 5-hour blocks with burn rate and projection")
@@ -176,8 +206,51 @@ limits API) so the projection shows a percent-of-limit and OK/WARNING/EXCEEDS.
 	cmd.Flags().Float64Var(&blockHours, "block-hours", 0, "Rolling block window in hours (default 5)")
 	cmd.Flags().StringVar(&watchEvery, "watch-interval", "", "Refresh interval for --watch (default 2s)")
 	cmd.Flags().Int64Var(&limit, "limit", 0, "Config-defined token denominator for the block projection (no live limits API)")
+	cmd.Flags().StringVar(&providerCSV, "provider", "all", "Providers to scan: all, or a comma list of claude,codex,opencode,pi")
 
 	return cmd
+}
+
+// parseProviderFlag expands the --provider value to the provider list:
+// "all" (or empty) means every provider with a usage source.
+func parseProviderFlag(value string) ([]string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "all" {
+		return usage.AllProviders, nil
+	}
+	known := make(map[string]bool, len(usage.AllProviders))
+	for _, p := range usage.AllProviders {
+		known[p] = true
+	}
+	var providers []string
+	for _, p := range strings.Split(value, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !known[p] {
+			return nil, fmt.Errorf("unknown provider %q (known: %s, or all)", p, strings.Join(usage.AllProviders, ", "))
+		}
+		providers = append(providers, p)
+	}
+	if len(providers) == 0 {
+		return usage.AllProviders, nil
+	}
+	return providers, nil
+}
+
+// usageBlockReports computes block reports for the given scope: a single
+// session (Claude rollup first, matching the historical --session semantics)
+// or the union of the given providers' stores. Claude-only provider lists go
+// through the historical ProjectBlocks path unchanged.
+func usageBlockReports(sessionID string, duration time.Duration, providers []string) ([]usage.BlockReport, error) {
+	if sessionID != "" {
+		return usage.SessionBlocks(nil, sessionID, usage.CostModeCalculate, duration)
+	}
+	if len(providers) == 1 && providers[0] == "claude" {
+		return usage.ProjectBlocks(nil, usage.CostModeCalculate, duration)
+	}
+	return usage.ProviderBlocks(providers, usage.CostModeCalculate, duration)
 }
 
 // toCcusageReport converts a ScanResult into the ccusage session-report shape.
