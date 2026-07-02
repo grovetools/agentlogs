@@ -256,10 +256,15 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	codexPattern := transcript.CodexSessionsGlob(homeDir, "")
 	codexMatches, _ := filepath.Glob(codexPattern)
 
+	piPattern := transcript.PiSessionsGlob(homeDir, "")
+	piMatches, _ := filepath.Glob(piPattern)
+
 	matches := append(claudeMatches, codexMatches...)
+	matches = append(matches, piMatches...)
 	logger.WithFields(map[string]interface{}{
 		"claude_count": len(claudeMatches),
 		"codex_count":  len(codexMatches),
+		"pi_count":     len(piMatches),
 		"total":        len(matches),
 	}).Debug("Found transcript files")
 
@@ -276,6 +281,8 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 
 		if strings.Contains(logPath, "/.codex/") {
 			sessionID, cwd, startedAt, jobs, found = s.parseCodexLog(logPath)
+		} else if strings.Contains(logPath, "/.pi/") {
+			sessionID, cwd, startedAt, jobs, found = s.parsePiLog(logPath)
 		} else {
 			sessionID, cwd, startedAt, jobs, found = s.parseClaudeLog(logPath)
 		}
@@ -336,11 +343,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			// Determine provider based on path
 			provider := metadata.Provider
 			if provider == "" {
-				if strings.Contains(transcriptPath, "/.codex/") {
-					provider = "codex"
-				} else {
-					provider = "claude"
-				}
+				provider = providerFromTranscriptPath(transcriptPath)
 			}
 
 			sessions = append(sessions, SessionInfo{
@@ -371,10 +374,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				continue
 			}
 			// Determine provider from path
-			provider := "claude"
-			if strings.Contains(logPath, "/.codex/") {
-				provider = "codex"
-			}
+			provider := providerFromTranscriptPath(logPath)
 			sessions = append(sessions, SessionInfo{
 				SessionID:   strings.TrimSuffix(filepath.Base(logPath), ".jsonl"),
 				ProjectName: "unknown",
@@ -390,10 +390,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 
 		projectPath, projectName, worktree, ecosystem := s.parseProjectPath(cwd)
 		// Determine provider from path
-		provider := "claude"
-		if strings.Contains(logPath, "/.codex/") {
-			provider = "codex"
-		}
+		provider := providerFromTranscriptPath(logPath)
 		sessions = append(sessions, SessionInfo{
 			SessionID:   sessionID,
 			ProjectName: projectName,
@@ -437,6 +434,19 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	}
 
 	return sessions, nil
+}
+
+// providerFromTranscriptPath infers a provider name from where a transcript
+// file lives on disk: ~/.codex/ -> codex, ~/.pi/ -> pi, anything else claude.
+func providerFromTranscriptPath(path string) string {
+	switch {
+	case strings.Contains(path, "/.codex/"):
+		return "codex"
+	case strings.Contains(path, "/.pi/"):
+		return "pi"
+	default:
+		return "claude"
+	}
 }
 
 func (s *Scanner) parseProjectPath(cwd string) (projectPath, projectName, worktree, ecosystem string) {
@@ -716,6 +726,114 @@ func (s *Scanner) parseCodexLog(logPath string) (sessionID, cwd string, startedA
 		}
 	}
 	return
+}
+
+// parsePiLog extracts session identity and any referenced flow jobs from a pi
+// session JSONL file. The first line is the session header
+// ({"type":"session","id":...,"timestamp":...,"cwd":...}); conversation turns
+// are {"type":"message","message":{role,content}} entries whose user text may
+// embed a flow briefing instruction (session-manager.ts in the pi source).
+func (s *Scanner) parsePiLog(logPath string) (sessionID, cwd string, startedAt time.Time, jobs []JobInfo, found bool) {
+	file, err := os.Open(logPath)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	jobMap := make(map[string]bool)
+	scanner := bufio.NewScanner(file)
+	const maxScanTokenSize = 1024 * 1024 // 1MB
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxScanTokenSize)
+	lineIndex := 0
+
+	for scanner.Scan() {
+		if len(scanner.Bytes()) == 0 {
+			lineIndex++
+			continue
+		}
+
+		var entry struct {
+			Type      string `json:"type"`
+			ID        string `json:"id"`
+			Timestamp string `json:"timestamp"`
+			Cwd       string `json:"cwd"`
+			Message   struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+			lineIndex++
+			continue
+		}
+
+		switch entry.Type {
+		case "session":
+			sessionID = entry.ID
+			cwd = entry.Cwd
+			startedAt, _ = time.Parse(time.RFC3339Nano, entry.Timestamp)
+			found = sessionID != ""
+		case "message":
+			if entry.Message.Role != "user" {
+				break
+			}
+			text := piUserText(entry.Message.Content)
+			if text == "" {
+				break
+			}
+			if plan, job := s.parsePlanInfo(text); plan != "" && job != "" {
+				key := plan + ":" + job
+				if !jobMap[key] {
+					jobMap[key] = true
+					jobs = append(jobs, JobInfo{Plan: plan, Job: job, LineIndex: lineIndex})
+				}
+			} else if planDir, planName, jobID := s.parseBriefingInfo(text); jobID != "" {
+				if jobFilename := s.resolveJobFilenameByID(planDir, jobID); jobFilename != "" {
+					key := planName + ":" + jobFilename
+					if !jobMap[key] {
+						jobMap[key] = true
+						jobs = append(jobs, JobInfo{Plan: planName, Job: jobFilename, LineIndex: lineIndex})
+					}
+				}
+			}
+		}
+
+		lineIndex++
+		if lineIndex > 100 { // Performance limit
+			break
+		}
+	}
+	return
+}
+
+// piUserText flattens a pi user-message content payload (a plain string or an
+// array of {type:"text",text} blocks) into a single string.
+func piUserText(content json.RawMessage) string {
+	if len(content) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(content, &s); err == nil {
+		return s
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(content, &blocks); err != nil {
+		return ""
+	}
+	var out strings.Builder
+	for _, b := range blocks {
+		if b.Type == "text" && b.Text != "" {
+			if out.Len() > 0 {
+				out.WriteString("\n")
+			}
+			out.WriteString(b.Text)
+		}
+	}
+	return out.String()
 }
 
 // scanForArchivedSessions finds sessions archived in plan artifact directories.

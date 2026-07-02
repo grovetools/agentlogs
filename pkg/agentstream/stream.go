@@ -176,6 +176,8 @@ func normalizerForProvider(provider string) transcript.Normalizer {
 		return transcript.NewCodexNormalizer()
 	case "opencode":
 		return transcript.NewOpenCodeNormalizer()
+	case "pi":
+		return transcript.NewPiNormalizer()
 	default:
 		return transcript.NewClaudeNormalizer()
 	}

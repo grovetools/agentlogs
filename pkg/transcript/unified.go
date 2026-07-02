@@ -59,4 +59,9 @@ type UnifiedTokens struct {
 	Reasoning  int `json:"reasoning,omitempty"`
 	CacheRead  int `json:"cacheRead,omitempty"`
 	CacheWrite int `json:"cacheWrite,omitempty"`
+	// Cost is the provider-reported dollar cost for this message, when the
+	// provider computes it natively (pi: usage.cost.total per assistant
+	// message). 0 means "not reported" — consumers needing cost for other
+	// providers must use a pricing table instead.
+	Cost float64 `json:"cost,omitempty"`
 }

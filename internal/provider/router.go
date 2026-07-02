@@ -30,6 +30,8 @@ func SelectSource(info *session.SessionInfo, daemonClient daemon.Client) Transcr
 		return NewOpenCodeSource()
 	case "codex":
 		return NewCodexSource()
+	case "pi":
+		return NewPiSource()
 	default:
 		return NewClaudeSource()
 	}

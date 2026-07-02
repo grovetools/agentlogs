@@ -15,7 +15,7 @@ import (
 
 // DiscoverOptions configures transcript discovery.
 type DiscoverOptions struct {
-	Provider  string    // "claude", "codex", "opencode"
+	Provider  string    // "claude", "codex", "pi", "opencode"
 	WorkDir   string    // Working directory to match
 	AfterTime time.Time // Only transcripts modified after this time
 }
@@ -28,6 +28,7 @@ var ErrUnsupportedProvider = errors.New("transcript discovery not supported for 
 // DiscoverTranscript finds the most recent transcript file matching the options.
 // For Claude, it looks in ~/.claude/projects/<sanitized-path>/*.jsonl.
 // For Codex, it looks in the date-nested ~/.codex/sessions/YYYY/MM/DD/*.jsonl.
+// For pi, it looks in the munged-cwd ~/.pi/agent/sessions/--<cwd>--/*.jsonl.
 // Opencode is NOT supported: it has no single transcript file to discover —
 // it persists fragmented message/part JSON files under
 // ~/.local/share/opencode/storage/, keyed by native session ID. Use the
@@ -39,10 +40,12 @@ func DiscoverTranscript(opts DiscoverOptions) (string, error) {
 		return discoverClaudeTranscript(opts)
 	case "codex":
 		return discoverCodexTranscript(opts)
+	case "pi":
+		return discoverPiTranscript(opts)
 	case "opencode":
-		return "", fmt.Errorf("%w opencode: opencode does not write a single transcript file; it stores fragmented message/part files under ~/.local/share/opencode/storage/ keyed by session ID — use the opencode session APIs (assembler) instead. File-based discovery supports: claude, codex", ErrUnsupportedProvider)
+		return "", fmt.Errorf("%w opencode: opencode does not write a single transcript file; it stores fragmented message/part files under ~/.local/share/opencode/storage/ keyed by session ID — use the opencode session APIs (assembler) instead. File-based discovery supports: claude, codex, pi", ErrUnsupportedProvider)
 	default:
-		return "", fmt.Errorf("%w %s: file-based discovery supports: claude, codex", ErrUnsupportedProvider, opts.Provider)
+		return "", fmt.Errorf("%w %s: file-based discovery supports: claude, codex, pi", ErrUnsupportedProvider, opts.Provider)
 	}
 }
 
@@ -135,6 +138,67 @@ func discoverCodexTranscript(opts DiscoverOptions) (string, error) {
 
 	if latestFile == "" {
 		return "", fmt.Errorf("no Codex session files found in %s", codexDir)
+	}
+
+	return latestFile, nil
+}
+
+// discoverPiTranscript finds the newest pi session file for a working
+// directory. Like Claude, pi maps each cwd to a deterministic per-project
+// directory — ~/.pi/agent/sessions/--<cwd-with-separators-as-dashes>--
+// (getDefaultSessionDirPath in the pi source's session-manager.ts) — so the
+// scan is scoped to that directory. The AfterTime filter uses the session
+// header timestamp (first line carries an RFC3339 "timestamp" field) with an
+// mtime fallback, mirroring the claude path, so concurrent launches don't
+// race for "newest file".
+func discoverPiTranscript(opts DiscoverOptions) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+
+	piSessionsDir := transcript.PiSessionsDir(homeDir, opts.WorkDir)
+
+	if _, err := os.Stat(piSessionsDir); os.IsNotExist(err) {
+		return "", fmt.Errorf("pi sessions directory not found: %s", piSessionsDir)
+	}
+
+	entries, err := os.ReadDir(piSessionsDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read pi sessions directory: %w", err)
+	}
+
+	var latestFile string
+	var latestTime time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+
+		filePath := filepath.Join(piSessionsDir, entry.Name())
+
+		contentTime, err := getFirstTimestampFromFile(filePath)
+		if err != nil {
+			info, infoErr := entry.Info()
+			if infoErr != nil {
+				continue
+			}
+			contentTime = info.ModTime()
+		}
+
+		if !opts.AfterTime.IsZero() && !contentTime.After(opts.AfterTime) {
+			continue
+		}
+
+		if contentTime.After(latestTime) {
+			latestTime = contentTime
+			latestFile = filePath
+		}
+	}
+
+	if latestFile == "" {
+		return "", fmt.Errorf("no pi session files found in %s", piSessionsDir)
 	}
 
 	return latestFile, nil
