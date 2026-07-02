@@ -76,7 +76,7 @@ showing both cumulative totals and the latest context window size.`
 			}
 		}
 
-		fileStats, err := usage.FileTokenStats(sessionInfo.LogFilePath)
+		fileStats, err := usage.FileTokenStatsForProvider(sessionInfo.LogFilePath, sessionInfo.Provider)
 		if err != nil {
 			return fmt.Errorf("error reading log file: %w", err)
 		}
