@@ -100,6 +100,76 @@ func TestDiscoverTranscript_CodexIgnoresFlatFiles(t *testing.T) {
 	}
 }
 
+// writePiSession writes a pi session file into the munged-cwd session dir
+// under the fake home. headerTime goes into the header line's timestamp field
+// (discovery prefers content time over mtime).
+func writePiSession(t *testing.T, home, workDir, name string, headerTime time.Time) string {
+	t.Helper()
+	dir := filepath.Join(home, ".pi", "agent", "sessions", "--"+strings.ReplaceAll(strings.TrimPrefix(workDir, "/"), "/", "-")+"--")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, name)
+	header := `{"type":"session","version":3,"id":"` + strings.TrimSuffix(name, ".jsonl") + `","timestamp":"` + headerTime.UTC().Format(time.RFC3339Nano) + `","cwd":"` + workDir + `"}` + "\n"
+	if err := os.WriteFile(path, []byte(header), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestDiscoverTranscript_PiMungedCwdLayout covers pi's per-cwd session layout:
+// ~/.pi/agent/sessions/--<cwd-with-slashes-as-dashes>--/<ts>_<uuid>.jsonl.
+func TestDiscoverTranscript_PiMungedCwdLayout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	workDir := "/Users/test/project"
+
+	older := writePiSession(t, home, workDir,
+		"2026-07-01T08-00-00-000Z_aaaaaaaa-1111-7222-3333-444444444444.jsonl",
+		time.Now().Add(-2*time.Hour))
+	newest := writePiSession(t, home, workDir,
+		"2026-07-01T10-00-00-000Z_bbbbbbbb-1111-7222-3333-444444444444.jsonl",
+		time.Now().Add(-1*time.Minute))
+	// A session for a DIFFERENT cwd must never match this workDir.
+	otherCwd := writePiSession(t, home, "/Users/test/other",
+		"2026-07-01T10-30-00-000Z_cccccccc-1111-7222-3333-444444444444.jsonl",
+		time.Now())
+
+	got, err := DiscoverTranscript(DiscoverOptions{Provider: "pi", WorkDir: workDir})
+	if err != nil {
+		t.Fatalf("DiscoverTranscript: %v", err)
+	}
+	if got != newest {
+		t.Errorf("got %s, want newest %s", got, newest)
+	}
+	if got == otherCwd {
+		t.Error("matched a session from a different cwd")
+	}
+
+	// AfterTime filters out sessions that predate the launch.
+	got, err = DiscoverTranscript(DiscoverOptions{
+		Provider:  "pi",
+		WorkDir:   workDir,
+		AfterTime: time.Now().Add(-30 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("DiscoverTranscript with AfterTime: %v", err)
+	}
+	if got != newest {
+		t.Errorf("AfterTime discovery got %s, want %s", got, newest)
+	}
+	_ = older
+
+	// A cutoff after every session yields an error, not a stale match.
+	if _, err := DiscoverTranscript(DiscoverOptions{
+		Provider:  "pi",
+		WorkDir:   workDir,
+		AfterTime: time.Now(),
+	}); err == nil {
+		t.Error("expected error when no pi session is newer than AfterTime")
+	}
+}
+
 func TestDiscoverTranscript_OpencodeNotImplemented(t *testing.T) {
 	_, err := DiscoverTranscript(DiscoverOptions{Provider: "opencode", WorkDir: "/tmp"})
 	if err == nil {

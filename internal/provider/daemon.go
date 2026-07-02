@@ -26,6 +26,8 @@ func (s *DaemonSource) getNormalizer() transcript.Normalizer {
 	switch s.info.Provider {
 	case "codex":
 		return transcript.NewCodexNormalizer()
+	case "pi":
+		return transcript.NewPiNormalizer()
 	default:
 		return transcript.NewClaudeNormalizer()
 	}

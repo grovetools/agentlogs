@@ -347,7 +347,7 @@ func (p *Parser) extractMessage(entry TranscriptEntry) *ExtractedMessage {
 }
 
 // GetTranscriptPath finds the transcript path for a session
-// provider should be "claude" or "codex"
+// provider should be "claude", "codex", or "pi"
 func GetTranscriptPath(sessionID, provider string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -355,11 +355,16 @@ func GetTranscriptPath(sessionID, provider string) (string, error) {
 	}
 
 	var pattern string
-	if provider == "codex" {
+	switch provider {
+	case "codex":
 		// Codex stores logs in ~/.codex/sessions/YYYY/MM/DD/*.jsonl
 		// We need to search recursively for files containing the session ID
 		pattern = CodexSessionsGlob(homeDir, sessionID)
-	} else {
+	case "pi":
+		// pi stores logs in ~/.pi/agent/sessions/--<cwd>--/<ts>_<uuid>.jsonl;
+		// the session uuid is embedded in the filename.
+		pattern = PiSessionsGlob(homeDir, sessionID)
+	default:
 		// Default to Claude format
 		pattern = fmt.Sprintf("%s/.claude/projects/*/%s.jsonl", homeDir, sessionID)
 	}
