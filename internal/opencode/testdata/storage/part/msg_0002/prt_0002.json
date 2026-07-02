@@ -1,0 +1,15 @@
+{
+  "id": "prt_0002",
+  "sessionID": "ses_fixture01",
+  "messageID": "msg_0002",
+  "type": "tool",
+  "callID": "call_001",
+  "tool": "edit",
+  "state": {
+    "status": "completed",
+    "input": {"filePath": "main.go"},
+    "output": "edited",
+    "title": "Edit main.go",
+    "metadata": {"diff": "-old\n+new"}
+  }
+}

@@ -56,6 +56,14 @@ type ToolPart struct {
 	Diff   string                 `json:"diff,omitempty"`
 }
 
+// PatchPart represents a VCS patch part: opencode records the snapshot
+// commit hash plus the files it touched after a mutating turn (PatchPart in
+// the opencode schema: {hash, files}).
+type PatchPart struct {
+	Hash  string   `json:"hash"`
+	Files []string `json:"files"`
+}
+
 // Assembler reconstructs OpenCode transcripts from the fragmented storage format.
 type Assembler struct {
 	storageDir string
@@ -69,7 +77,14 @@ func NewAssembler() (*Assembler, error) {
 		return nil, fmt.Errorf("getting home directory: %w", err)
 	}
 
-	storageDir := filepath.Join(homeDir, ".local", "share", "opencode", "storage")
+	return NewAssemblerWithDir(filepath.Join(homeDir, ".local", "share", "opencode", "storage"))
+}
+
+// NewAssemblerWithDir creates a transcript assembler for an explicit storage
+// root — the directory holding session/, message/ and part/. Session
+// metadata written by the grove opencode plugin records this root as
+// opencode_storage_root, so callers can honor a non-default XDG_DATA_HOME.
+func NewAssemblerWithDir(storageDir string) (*Assembler, error) {
 	if _, err := os.Stat(storageDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("OpenCode storage directory does not exist: %s", storageDir)
 	}
@@ -275,15 +290,9 @@ func (a *Assembler) parsePart(data []byte) (Part, error) {
 		}
 
 	case "patch":
-		var patchPart struct {
-			Hash  string   `json:"hash"`
-			Files []string `json:"files"`
-		}
+		var patchPart PatchPart
 		if err := json.Unmarshal(data, &patchPart); err == nil {
-			part.Content = map[string]interface{}{
-				"hash":  patchPart.Hash,
-				"files": patchPart.Files,
-			}
+			part.Content = patchPart
 		}
 	}
 

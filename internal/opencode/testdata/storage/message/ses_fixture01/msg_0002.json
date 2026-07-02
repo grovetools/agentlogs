@@ -1,0 +1,7 @@
+{
+  "id": "msg_0002",
+  "sessionID": "ses_fixture01",
+  "role": "assistant",
+  "time": {"created": 1751400010000, "completed": 1751400020000},
+  "tokens": {"input": 120, "output": 45, "reasoning": 10, "cache": {"read": 300, "write": 80}}
+}

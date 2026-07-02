@@ -10,14 +10,18 @@ import (
 
 // FileTokenStatsForProvider routes per-file token accounting by provider.
 // Codex rollout files carry usage on end-of-turn token_count events instead
-// of Claude's message.usage shape; every other provider (claude, and for now
-// opencode — fully fixing opencode's metadata-file case is a separate effort)
-// keeps the historical Claude-shaped parsing.
+// of Claude's message.usage shape; opencode has no transcript file at all —
+// its path is a session info file whose tokens are read through the fragment
+// assembler. Every other provider keeps the historical Claude-shaped parsing.
 func FileTokenStatsForProvider(path, provider string) (FileStats, error) {
-	if provider == "codex" {
+	switch provider {
+	case "codex":
 		return codexFileTokenStats(path)
+	case "opencode":
+		return opencodeFileTokenStats(path)
+	default:
+		return FileTokenStats(path)
 	}
-	return FileTokenStats(path)
 }
 
 // codexFileTokenStats reads a codex rollout JSONL transcript and returns

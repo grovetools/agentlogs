@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/grovetools/core/cli"
@@ -51,9 +52,17 @@ showing both cumulative totals and the latest context window size.`
 			provider := "claude"
 			if strings.Contains(spec, "/.codex/") {
 				provider = "codex"
+			} else if strings.Contains(spec, "/opencode/storage/") {
+				// An opencode session info file
+				// (<storage>/session/<projectID>/<ses_*>.json); tokens are
+				// read through the fragment assembler.
+				provider = "opencode"
 			}
 
 			sessionID := "unknown"
+			if provider == "opencode" {
+				sessionID = strings.TrimSuffix(filepath.Base(spec), ".json")
+			}
 			pathParts := strings.Split(spec, "/")
 			for i, part := range pathParts {
 				if part == ".claude" || part == ".codex" {

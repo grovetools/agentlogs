@@ -1,0 +1,7 @@
+{
+  "id": "ses_fixture01",
+  "projectID": "proj_fixture",
+  "directory": "/tmp/fixture-project",
+  "title": "Fixture session",
+  "time": {"created": 1751400000000, "updated": 1751400020000}
+}

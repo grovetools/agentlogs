@@ -1,0 +1,7 @@
+{
+  "id": "prt_0001",
+  "sessionID": "ses_fixture01",
+  "messageID": "msg_0001",
+  "type": "text",
+  "text": "Please fix the bug in main.go"
+}

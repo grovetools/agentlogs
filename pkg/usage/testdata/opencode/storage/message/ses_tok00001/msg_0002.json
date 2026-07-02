@@ -1,0 +1,7 @@
+{
+  "id": "msg_0002",
+  "sessionID": "ses_tok00001",
+  "role": "assistant",
+  "time": {"created": 1751400010000, "completed": 1751400015000},
+  "tokens": {"input": 100, "output": 40, "reasoning": 5, "cache": {"read": 200, "write": 50}}
+}
