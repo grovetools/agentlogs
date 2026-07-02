@@ -8,16 +8,21 @@ import (
 	"time"
 )
 
-// AgentStatus represents the parsed status of an agent session from tmux pane output.
+// AgentStatus represents the observed status of an agent session. State,
+// Activity, and LastUpdate are provider-neutral (filled by both the Claude
+// pane parse and the transcript-based derivation); every other field is
+// CLAUDE-ONLY — it is scraped from Claude Code's TUI pane output by
+// ParsePaneOutput and stays zero for other providers (see
+// DeriveTranscriptStatus).
 type AgentStatus struct {
 	State       string     // "running" or "idle"
-	RawLine     string     // The raw status line (cleaned of escape hints)
-	Activity    string     // e.g., "Unravelling", "Building and verifying changes"
-	Duration    string     // e.g., "8s", "1m 58s"
-	TokenFlow   string     // "↑" (upload) or "↓" (download)
-	DeltaTokens string     // e.g., "220", "4.9k"
-	TotalTokens int        // e.g., 133990
-	TodoItems   []TodoItem // Parsed todo items
+	RawLine     string     // Claude-only: the raw status line (cleaned of escape hints)
+	Activity    string     // e.g., "Unravelling", "tool: Bash"
+	Duration    string     // Claude-only: e.g., "8s", "1m 58s"
+	TokenFlow   string     // Claude-only: "↑" (upload) or "↓" (download)
+	DeltaTokens string     // Claude-only: e.g., "220", "4.9k"
+	TotalTokens int        // Claude-only: e.g., 133990
+	TodoItems   []TodoItem // Claude-only: parsed todo items
 	LastUpdate  time.Time  // When this status was captured
 }
 
@@ -48,6 +53,11 @@ var (
 // ParsePaneOutput parses raw tmux pane output to extract agent session status.
 // It scans from the bottom up, looking for the status line and token count.
 // Returns nil if nothing useful is found.
+//
+// CLAUDE-ONLY: the regexes match Claude Code's TUI (spinner glyphs, "esc to
+// interrupt", ☒/☐ todo glyphs) and are meaningless against other providers'
+// screens. Callers that know the provider should go through StatusFromPane
+// (which guards) or DeriveTranscriptStatus (transcript-based, any provider).
 func ParsePaneOutput(output string) *AgentStatus {
 	lines := strings.Split(output, "\n")
 
@@ -147,6 +157,17 @@ func ParsePaneOutput(output string) *AgentStatus {
 	}
 
 	return status
+}
+
+// StatusFromPane is the provider-guarded pane parse: Claude sessions get the
+// full ParsePaneOutput scrape; any other provider returns nil (their TUIs are
+// not scraped — derive status from the transcript via DeriveTranscriptStatus
+// instead). An empty provider is treated as Claude, the historical default.
+func StatusFromPane(output, provider string) *AgentStatus {
+	if provider != "" && provider != "claude" {
+		return nil
+	}
+	return ParsePaneOutput(output)
 }
 
 // StateIcon returns the appropriate icon for the agent state.

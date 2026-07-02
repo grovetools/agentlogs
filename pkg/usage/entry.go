@@ -25,6 +25,15 @@ type loadedEntry struct {
 	Model       string
 	Timestamp   time.Time
 	Usage       transcript.Usage
+	// Provider is the coding-agent provider that produced this entry
+	// ("claude" when loaded through the historical Claude loaders).
+	Provider string
+	// CostUSD is the provider-reported native dollar cost for this entry,
+	// when the provider computes one (pi per-message usage.cost.total;
+	// opencode's message cost field). nil means "not reported" — the cost is
+	// then computed from token counts and the pricing table. A native cost
+	// always wins over a computed one (see EntryCost).
+	CostUSD *float64
 }
 
 // usageTokenTotal sums the four token classes for an entry's usage (the value

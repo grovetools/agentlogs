@@ -21,6 +21,15 @@ type TranscriptEntry struct {
 	Parts     []Part      `json:"parts"`
 	MessageID string      `json:"messageID"`
 	Tokens    *TokenUsage `json:"tokens,omitempty"`
+	// ProviderID/ModelID identify the backend model an assistant message ran
+	// on (opencode message fields providerID/modelID, e.g.
+	// "anthropic"/"claude-sonnet-4-5"). Empty on user messages.
+	ProviderID string `json:"providerID,omitempty"`
+	ModelID    string `json:"modelID,omitempty"`
+	// CostUSD is opencode's own computed dollar cost for the message (its
+	// "cost" field). Native cost — usage accounting prefers it over a
+	// pricing-table computation.
+	CostUSD float64 `json:"costUSD,omitempty"`
 }
 
 // TokenUsage contains token consumption info from a message.
@@ -126,10 +135,13 @@ func (a *Assembler) AssembleTranscript(sessionID string) ([]TranscriptEntry, err
 		}
 
 		var msg struct {
-			ID        string `json:"id"`
-			SessionID string `json:"sessionID"`
-			Role      string `json:"role"`
-			Time      struct {
+			ID         string  `json:"id"`
+			SessionID  string  `json:"sessionID"`
+			Role       string  `json:"role"`
+			ProviderID string  `json:"providerID"`
+			ModelID    string  `json:"modelID"`
+			Cost       float64 `json:"cost"`
+			Time       struct {
 				Created   int64 `json:"created"`
 				Completed int64 `json:"completed"`
 			} `json:"time"`
@@ -182,10 +194,13 @@ func (a *Assembler) AssembleTranscript(sessionID string) ([]TranscriptEntry, err
 		})
 
 		entry := TranscriptEntry{
-			Role:      msg.Role,
-			Timestamp: time.Unix(0, msg.Time.Created*int64(time.Millisecond)),
-			Parts:     parts,
-			MessageID: msg.ID,
+			Role:       msg.Role,
+			Timestamp:  time.Unix(0, msg.Time.Created*int64(time.Millisecond)),
+			Parts:      parts,
+			MessageID:  msg.ID,
+			ProviderID: msg.ProviderID,
+			ModelID:    msg.ModelID,
+			CostUSD:    msg.Cost,
 		}
 
 		// Add token usage if available

@@ -47,17 +47,20 @@ func rawCost(u transcript.Usage, pricing Pricing) float64 {
 // mode, precomputed cost (costUSD; nil when none), and pricing table. The
 // second return reports the resolved model name when pricing was required but
 // missing, so callers can surface an "unpriced" flag rather than a silent $0.
+//
+// Precedence: a provider-native cost (costUSD non-nil — pi's per-message
+// usage.cost.total, opencode's message cost) is authoritative and wins in
+// EVERY mode, including CostModeCalculate: the provider priced the exact
+// request it billed, so recomputing from a snapshot table can only be less
+// accurate. Claude entries never carry a native cost (callers pass nil), so
+// the Claude calculate path is byte-identical to the historical behavior.
 func EntryCost(model string, u transcript.Usage, costUSD *float64, mode CostMode, pm *PricingMap) (float64, string) {
+	if costUSD != nil {
+		return *costUSD, ""
+	}
 	switch mode {
 	case CostModeDisplay:
-		if costUSD != nil {
-			return *costUSD, ""
-		}
 		return 0, ""
-	case CostModeAuto:
-		if costUSD != nil {
-			return *costUSD, ""
-		}
 	}
 	// Calculate (or Auto with no precomputed cost).
 	if model == "" {

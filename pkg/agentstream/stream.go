@@ -17,6 +17,10 @@ type StreamOptions struct {
 	TranscriptPath string                // Direct path (if already known)
 	Discover       *DiscoverOptions      // Or discover automatically
 	Normalizer     transcript.Normalizer // Optional override; defaults based on provider
+	// Provider selects the normalizer when TranscriptPath is given directly
+	// (with Discover, its Provider already routes). Empty defaults to claude,
+	// the historical behavior.
+	Provider string
 }
 
 // Flusher is an optional interface for normalizers that buffer entries.
@@ -45,9 +49,12 @@ func Stream(ctx context.Context, opts StreamOptions) (<-chan transcript.UnifiedE
 	// Default normalizer based on provider
 	normalizer := opts.Normalizer
 	if normalizer == nil {
-		if opts.Discover != nil {
-			normalizer = normalizerForProvider(opts.Discover.Provider)
-		} else {
+		switch {
+		case opts.Provider != "":
+			normalizer = NormalizerForProvider(opts.Provider)
+		case opts.Discover != nil:
+			normalizer = NormalizerForProvider(opts.Discover.Provider)
+		default:
 			normalizer = transcript.NewClaudeNormalizer()
 		}
 	}
@@ -169,8 +176,12 @@ func tailFile(ctx context.Context, path string, normalizer transcript.Normalizer
 	}
 }
 
-// normalizerForProvider returns the appropriate normalizer for a given provider.
-func normalizerForProvider(provider string) transcript.Normalizer {
+// NormalizerForProvider returns the appropriate normalizer for a provider.
+// This is THE provider→normalizer routing table: external consumers (flow's
+// TUI transcript loaders) select through it instead of constructing a
+// normalizer directly, so provider routing has one definition. Unknown/empty
+// providers get the Claude normalizer, the historical default.
+func NormalizerForProvider(provider string) transcript.Normalizer {
 	switch provider {
 	case "codex":
 		return transcript.NewCodexNormalizer()

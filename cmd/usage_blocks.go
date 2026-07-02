@@ -16,10 +16,15 @@ import (
 // printBlocks renders rolling 5-hour usage blocks: one row per block, with the
 // active block annotated by its burn rate, linear projection, and (when a limit
 // denominator is given) a percent-of-limit status. Gap blocks render as idle
-// stretches. limit <= 0 omits the limit columns.
-func printBlocks(w io.Writer, reports []usage.BlockReport, limit int64) {
+// stretches. limit <= 0 omits the limit columns. claudeOnly keeps the
+// historical Claude-specific empty-state wording for --provider claude runs.
+func printBlocks(w io.Writer, reports []usage.BlockReport, limit int64, claudeOnly bool) {
 	if len(reports) == 0 {
-		fmt.Fprintln(w, "No Claude usage data found.")
+		if claudeOnly {
+			fmt.Fprintln(w, "No Claude usage data found.")
+		} else {
+			fmt.Fprintln(w, "No agent usage data found.")
+		}
 		return
 	}
 	for _, r := range reports {
@@ -67,23 +72,19 @@ func printBlocks(w io.Writer, reports []usage.BlockReport, limit int64) {
 // runUsageWatch live-tails the active 5-hour block, redrawing the block view on
 // a timer until interrupted (Ctrl-C). When sessionID is set it tails that one
 // session's files (parent + ad-hoc + workflow); otherwise it tails every
-// project. The poll re-reads the transcripts each tick — SummarizeTranscript is
-// cheap and incremental-friendly, and Claude appends to the same files.
-func runUsageWatch(parent context.Context, sessionID string, duration time.Duration, limit int64, every time.Duration) error {
+// listed provider's store. The poll re-reads the transcripts each tick —
+// per-file loading is cheap and incremental-friendly, and providers append to
+// (or grow) the same stores.
+func runUsageWatch(parent context.Context, sessionID string, duration time.Duration, limit int64, every time.Duration, providers []string) error {
 	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 
+	claudeOnly := len(providers) == 1 && providers[0] == "claude"
 	render := func() error {
-		var reports []usage.BlockReport
-		var err error
-		if sessionID != "" {
-			reports, err = usage.SessionBlocks(nil, sessionID, usage.CostModeCalculate, duration)
-		} else {
-			reports, err = usage.ProjectBlocks(nil, usage.CostModeCalculate, duration)
-		}
+		reports, err := usageBlockReports(sessionID, duration, providers)
 		if err != nil {
 			return err
 		}
@@ -96,7 +97,7 @@ func runUsageWatch(parent context.Context, sessionID string, duration time.Durat
 			fmt.Fprintln(os.Stdout, "session window; its prompt cache has likely expired (will re-cache).")
 			return nil
 		}
-		printBlocks(os.Stdout, []usage.BlockReport{*active}, limit)
+		printBlocks(os.Stdout, []usage.BlockReport{*active}, limit, claudeOnly)
 		return nil
 	}
 

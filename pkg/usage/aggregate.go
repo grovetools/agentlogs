@@ -67,8 +67,13 @@ type AgentUsage struct {
 // Summary is the aggregated usage+cost for a session (or any grouping), with a
 // per-model breakdown and a per-agent breakdown.
 type Summary struct {
-	SessionID      string       `json:"session_id"`
-	ProjectPath    string       `json:"project_path,omitempty"`
+	SessionID   string `json:"session_id"`
+	ProjectPath string `json:"project_path,omitempty"`
+	// Provider is the coding-agent provider the session belongs to. Empty for
+	// Claude sessions (the historical shape — keeping the field absent from
+	// their JSON preserves byte-identical Claude output); set to "codex",
+	// "opencode", or "pi" for non-Claude sessions.
+	Provider       string       `json:"provider,omitempty"`
 	Usage          Usage        `json:"usage"`
 	CostUSD        float64      `json:"cost_usd"`
 	MissingPricing bool         `json:"missing_pricing,omitempty"`
@@ -158,7 +163,13 @@ func summarize(sessionID, projectPath string, entries []loadedEntry, agentIDs []
 
 	for i, e := range entries {
 		eu := usageFromTranscript(e.Usage)
-		cost, missing := EntryCost(e.Model, e.Usage, nil, mode, pm)
+		// e.CostUSD is nil for Claude entries (no native cost recorded), so
+		// this is the historical calculate path for them; pi/opencode entries
+		// carry a native cost that takes precedence (see EntryCost).
+		cost, missing := EntryCost(e.Model, e.Usage, e.CostUSD, mode, pm)
+		if e.Provider != "" && e.Provider != "claude" && s.Provider == "" {
+			s.Provider = e.Provider
+		}
 
 		s.Usage.Add(eu)
 		s.CostUSD += cost
@@ -364,16 +375,26 @@ type ScanResult struct {
 // is its own "agent-<id>" session and workflow agents roll up to their session-id
 // directory — this is what makes ScanProjects diff-match `ccusage claude session`.
 func ScanProjects(slugDirs []string, mode CostMode, since time.Time) (ScanResult, error) {
-	pm := DefaultPricing()
+	all, err := collectClaudeEntries(slugDirs)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	return scanResultFromEntries(all, mode, since), nil
+}
 
+// collectClaudeEntries walks the given project-slug dirs (or all of
+// ~/.claude/projects when empty) and loads every usage-bearing entry. This is
+// the Claude usage source's collection primitive — extracted verbatim from
+// ScanProjects so the Claude scan path is unchanged.
+func collectClaudeEntries(slugDirs []string) ([]loadedEntry, error) {
 	if len(slugDirs) == 0 {
 		root, err := claudeProjectsDir()
 		if err != nil {
-			return ScanResult{}, err
+			return nil, err
 		}
 		entries, err := os.ReadDir(root)
 		if err != nil {
-			return ScanResult{}, err
+			return nil, err
 		}
 		for _, e := range entries {
 			if e.IsDir() {
@@ -400,9 +421,20 @@ func ScanProjects(slugDirs []string, mode CostMode, since time.Time) (ScanResult
 			return nil
 		})
 		if err != nil {
-			return ScanResult{}, err
+			return nil, err
 		}
 	}
+	return all, nil
+}
+
+// scanResultFromEntries applies the since filter, dedups, groups by the
+// (provider, projectPath, sessionId) composite, and summarizes each group plus
+// the grand total. Claude-only entry sets group exactly as the historical
+// (projectPath, sessionId) key did — every Claude entry carries the same
+// provider — so ScanProjects output is unchanged; the provider dimension only
+// separates same-named sessions across different providers' stores.
+func scanResultFromEntries(all []loadedEntry, mode CostMode, since time.Time) ScanResult {
+	pm := DefaultPricing()
 
 	if !since.IsZero() {
 		filtered := all[:0]
@@ -416,18 +448,20 @@ func ScanProjects(slugDirs []string, mode CostMode, since time.Time) (ScanResult
 
 	all = dedupe(all)
 
-	// Group by the (projectPath, sessionId) composite — ccusage's session key.
-	// The same path-derived session id (e.g. a workflow run wf_*) can appear
-	// under multiple parent-session project paths and is reported as separate
-	// rows, so sessionId alone is not unique.
+	// Group by the (provider, projectPath, sessionId) composite — ccusage's
+	// session key plus the provider dimension. The same path-derived session
+	// id (e.g. a workflow run wf_*) can appear under multiple parent-session
+	// project paths and is reported as separate rows, so sessionId alone is
+	// not unique.
 	type groupKey struct {
-		project string
-		session string
+		provider string
+		project  string
+		session  string
 	}
 	bySession := make(map[groupKey][]loadedEntry)
 	order := make([]groupKey, 0)
 	for _, e := range all {
-		k := groupKey{project: e.ProjectPath, session: e.SessionID}
+		k := groupKey{provider: e.Provider, project: e.ProjectPath, session: e.SessionID}
 		if _, ok := bySession[k]; !ok {
 			order = append(order, k)
 		}
@@ -449,9 +483,10 @@ func ScanProjects(slugDirs []string, mode CostMode, since time.Time) (ScanResult
 	// Grand total over every deduped entry.
 	result.Totals = summarize("", "", all, nil, mode, pm)
 	result.Totals.SessionID = ""
+	result.Totals.Provider = ""
 
 	sort.Slice(result.Sessions, func(i, j int) bool {
 		return result.Sessions[i].LastActivity.Before(result.Sessions[j].LastActivity)
 	})
-	return result, nil
+	return result
 }
