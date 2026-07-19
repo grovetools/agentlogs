@@ -1,0 +1,27 @@
+# metrics fold rules
+# Scopes the `aglogs metrics` surface: the pure fold over unified transcript
+# entries, the per-provider file-touch table, and the CLI that loads entries
+# and emits the result as JSON.
+#
+# The fold is the Process axis of the eval run record, so a change here changes
+# a measurement every downstream phase reads. The record package is the schema
+# authority and is cross-repo, so a field change there invalidates the fold's
+# output shape.
+#
+# The transcript types are the fold's input: UnifiedPart.Content is an
+# interface{} that holds typed structs in-process and maps after a JSON round
+# trip, so changes to the normalizers can silently break the fallback path.
+# Paths are relative to the agentlogs repo root.
+
+pkg/metrics/metrics.go
+pkg/metrics/filetools.go
+cmd/metrics.go
+cmd/root.go
+pkg/transcript/unified.go
+pkg/transcript/normalizer_claude.go
+pkg/transcript/normalizer_codex.go
+pkg/transcript/normalizer_opencode.go
+internal/provider/router.go
+internal/provider/provider.go
+../eval/pkg/record/record.go
+tests/e2e/scenarios.go

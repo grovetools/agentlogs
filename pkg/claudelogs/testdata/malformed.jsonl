@@ -1,0 +1,5 @@
+{"type":"user","sessionId":"sess-bad","uuid":"m1","timestamp":"2026-01-02T03:04:05Z","message":{"role":"user","content":"before the damage"}}
+{"type":"user","sessionId":"sess-bad","uuid":"m2","timestamp":"2026-01-02T0
+
+this line is not json at all
+{"type":"assistant","sessionId":"sess-bad","uuid":"m3","timestamp":"2026-01-02T03:04:07Z","message":{"id":"msg_bad_1","type":"message","role":"assistant","content":[{"type":"text","text":"after the damage"}]}}

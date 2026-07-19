@@ -1,0 +1,4 @@
+{
+  "file_path": "/tmp/example/main.go",
+  "content": "package main\n\nimport \"fmt\"\n\nfunc main() {\nfmt.Println(\"hi\")\n}\n"
+}
