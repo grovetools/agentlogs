@@ -214,6 +214,52 @@ func TestLiftGroveEntriesReplicateNilWhenUnstamped(t *testing.T) {
 	}
 }
 
+// Metrics ACCUMULATE across every grove_metric entry on the arm's path; a later
+// entry must not wipe an earlier one.
+//
+// The nil check on meta.Metrics is what makes that true: allocating the map
+// unconditionally would replace it on each entry, so only the LAST
+// grove_metric's keys would survive and every earlier measurement would vanish
+// silently — no warning, no absent key, just a smaller map than was reported.
+//
+// This is reachable in production today, not hypothetical: the emitter appends
+// one grove_metric per agent_end (metrics.ts), so any multi-turn session carries
+// several on one branch. It is harmless only because that payload currently
+// stamps {turns, tool_counts} and no `metrics` key, so the merge has nothing to
+// lose yet. It becomes silent data loss the moment a real component metric is
+// emitted, which is why it is pinned now rather than then.
+//
+// The row this pins that no other fixture supplies: TWO grove_metric entries on
+// one path, each carrying a DIFFERENT valid D8 key. Every other fixture stamps
+// at most one grove_metric entry, so the second call into liftMetricEntry — the
+// only call where the guard can matter — never happened.
+//
+// Mandatory mutation: `meta.Metrics = make(map[string]float64)` unconditionally
+// (drop the nil check) -> this must FAIL.
+func TestLiftGroveEntriesAccumulatesAcrossMetricEntries(t *testing.T) {
+	_, meta, warnings := liftFixture(t, "grove_two_metric_entries")
+
+	if len(warnings) != 0 {
+		t.Fatalf("fixture premise broken: want no lift warnings (both keys are "+
+			"valid D8), got %v", warningCodes(warnings))
+	}
+	if len(meta.Metrics) != 2 {
+		t.Fatalf("Metrics = %v, want both keys. A second grove_metric entry must ADD "+
+			"to the arm's metrics, not replace them: re-allocating the map per entry "+
+			"discards every earlier measurement with no warning and no absent key.",
+			meta.Metrics)
+	}
+	// The EARLIER entry's key is the one a re-allocating map would lose.
+	if got, ok := meta.Metrics["context.off_bundle_reads"]; !ok || got != 3 {
+		t.Errorf("context.off_bundle_reads = %v (present=%v), want 3. This key comes "+
+			"from the FIRST grove_metric entry and is exactly what a later entry "+
+			"would wipe.", got, ok)
+	}
+	if got, ok := meta.Metrics["skills.load_order_violations"]; !ok || got != 1 {
+		t.Errorf("skills.load_order_violations = %v (present=%v), want 1", got, ok)
+	}
+}
+
 // --- unattributed arms ----------------------------------------------------
 
 func TestLiftGroveEntriesUnattributedArm(t *testing.T) {

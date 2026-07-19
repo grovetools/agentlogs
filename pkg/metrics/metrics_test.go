@@ -414,6 +414,60 @@ func TestComputeDistinctToolsPreservesCase(t *testing.T) {
 	}
 }
 
+// A tool_call part whose Content is NEITHER a UnifiedToolCall nor a map falls
+// through both branches of partToolCall to a zero-value call, whose Name is "".
+// That call is still a real tool call and is counted as one, but "" is not a
+// tool NAME and must not become an entry in the distinct set.
+//
+// Without the `call.Name != ""` guard, "" is admitted as a distinct tool and
+// DistinctTools reports a tool that does not exist — and it inflates by exactly
+// one no matter how many malformed parts appear, since the set dedupes, which
+// is what makes the resulting number quietly plausible rather than obviously
+// broken.
+//
+// The row this pins that no other test supplies: a tool_call part with
+// unrecognised Content. Every other Compute fixture builds parts through
+// toolPart (a typed UnifiedToolCall, always named) or the JSON-round-tripped
+// map shape; neither can produce an unnamed call.
+//
+// Mandatory mutation: drop `if call.Name != ""` (admit unconditionally) -> this
+// must FAIL.
+func TestComputeDoesNotCountUnnamedToolCallsAsDistinctTools(t *testing.T) {
+	// Content is a bare string: not a UnifiedToolCall, not a map.
+	malformed := transcript.UnifiedPart{Type: PartTypeToolCall, Content: "not a tool call"}
+
+	entries := []transcript.UnifiedEntry{
+		{Role: "assistant", Provider: "claude", Parts: []transcript.UnifiedPart{
+			toolPart("Read", map[string]interface{}{"file_path": "/a"}),
+			malformed,
+			// A second malformed part: the distinct set dedupes, so a broken
+			// guard inflates by one here rather than two — pinning the count at
+			// 1 catches it either way.
+			malformed,
+		}},
+	}
+
+	// Premise: this really does yield an unnamed call, so the guard is the only
+	// thing standing between it and the distinct set.
+	if call := partToolCall(malformed); call.Name != "" {
+		t.Fatalf("fixture premise broken: partToolCall returned name %q, want \"\"", call.Name)
+	}
+
+	got := Compute(entries)
+
+	// All three are counted as CALLS — the guard must not suppress the call
+	// itself, only its absent name.
+	if iv(got.ToolCalls) != 3 {
+		t.Errorf("ToolCalls = %d, want 3. A malformed tool_call part is still a tool "+
+			"call that happened; only its NAME is unknown.", iv(got.ToolCalls))
+	}
+	if iv(got.DistinctTools) != 1 {
+		t.Errorf("DistinctTools = %d, want 1 (only \"Read\"). An empty name is not a "+
+			"tool: admitting it invents a distinct tool that was never invoked.",
+			iv(got.DistinctTools))
+	}
+}
+
 func TestComputeEmptyTranscript(t *testing.T) {
 	got := Compute(nil)
 
