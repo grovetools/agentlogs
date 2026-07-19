@@ -1,0 +1,39 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "e2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "go"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:03Z",
+    "messageID": "e3",
+    "parts": [
+      {
+        "type": "tool_call",
+        "content": {
+          "id": "t1",
+          "name": "read",
+          "input": {
+            "path": "a.go"
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 100,
+      "output": 20,
+      "cost": 0.001
+    },
+    "provider": "pi"
+  }
+]

@@ -43,26 +43,48 @@ var fileToolTable = []fileToolRule{
 	{Provider: "claude", Tool: "write", InputKeys: []string{"file_path"}, Edit: true},
 	{Provider: "claude", Tool: "multiedit", InputKeys: []string{"file_path"}, Edit: true},
 	{Provider: "claude", Tool: "notebookedit", InputKeys: []string{"notebook_path", "file_path"}, Edit: true},
+
+	// pi rows. pi's entire tool vocabulary is read/bash/edit/write/grep/find/ls
+	// (ToolName + allToolNames, packages/coding-agent/src/core/tools/index.ts),
+	// and every file-taking tool spells the argument "path" — verified in each
+	// tool's typebox schema: read.ts readSchema.path (required), write.ts
+	// writeSchema.path (required), edit.ts editSchema.path (required, alongside
+	// an `edits` array), grep.ts/find.ts/ls.ts *Schema.path (optional).
+	//
+	// bash is deliberately absent: bashSchema is {command, timeout} only, so
+	// there is genuinely no structured path to read. That is the one tool the
+	// original "pi is unsupported" note was actually describing.
+	{Provider: "pi", Tool: "read", InputKeys: []string{"path"}, Edit: false},
+	{Provider: "pi", Tool: "grep", InputKeys: []string{"path"}, Edit: false},
+	{Provider: "pi", Tool: "find", InputKeys: []string{"path"}, Edit: false},
+	{Provider: "pi", Tool: "ls", InputKeys: []string{"path"}, Edit: false},
+	{Provider: "pi", Tool: "edit", InputKeys: []string{"path"}, Edit: true},
+	{Provider: "pi", Tool: "write", InputKeys: []string{"path"}, Edit: true},
 }
 
 // providerSupported reports whether the file-touch table knows anything at all
 // about a provider. Providers it does not know yield nil file counts plus an
 // "unsupported" list, never a misleading zero.
 //
-// v0 supports claude only. Every other provider is unsupported, each for a
-// concrete evidentiary reason rather than by omission:
+// claude and pi are supported. The rest are unsupported, each for a concrete
+// evidentiary reason rather than by omission:
 //
 //   - codex: Input["command"] is an argv ARRAY (["bash","-lc","ls *.go"]), not
 //     a path — see pkg/display/unified.go:152-158 and the codex fixture. There
 //     is no structured file-path key to read, and apply_patch does not appear
 //     anywhere in agentlogs.
-//   - pi: the only tool in the pi fixture is "bash", whose Input["command"] is
-//     an opaque shell string. Same problem: no structured path key.
 //   - opencode: the file-path key IS known ("filePath",
 //     pkg/display/opencode.go:109), but opencode tool NAMES are nowhere in the
 //     repo — the normalizer passes toolPart.Tool through opaquely
 //     (pkg/transcript/normalizer_opencode.go:65). Without names we cannot tell
 //     a read from a write, so we decline to measure rather than guess.
+//
+// pi was previously listed here as unsupported on the grounds that "the only
+// tool in the pi fixture is bash". That was a statement about the FIXTURE being
+// read as a statement about the provider: pi's real vocabulary has six
+// file-taking tools, all keyed "path". Reporting "cannot measure" for something
+// measurable is a D4 error in the optimistic direction, so the rows were added
+// and the claim retired. Do not re-derive it from a thin fixture.
 func providerSupported(provider string) bool {
 	p := strings.ToLower(provider)
 	for _, rule := range fileToolTable {

@@ -1,0 +1,3 @@
+{"type":"session","version":3,"id":"0198c2f4-0000-7abc-8def-000000000013","timestamp":"2026-07-01T10:00:00.000Z","cwd":"/Users/test/project"}
+{"type":"custom","id":"j1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","customType":"grove_config","data":{"config":{"model":"anthropic/claude-sonnet-4-5","provider":"pi","components":{"context":"c-seed","memory":"m1","plan":"pl1","prompt":"p-seed","skills":"s1"}},"config_hash":"c14806774e5677b74b5f79478d0e7e12eb0516579f93a9d505ca616f234eb02a","schema":"0.2.0"}}
+{"type":"custom","id":"j2","parentId":"j1","timestamp":"2026-07-01T10:00:02.000Z","customType":"grove_metric","data":{"metrics":{"context.off_bundle_reads":2,"nodots":1,"too.many.segments":1,"context.BadCase":1,"":5}}}

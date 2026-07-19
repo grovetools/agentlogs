@@ -1,0 +1,68 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:01Z",
+    "messageID": "a1",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "hello"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "a2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "hi there"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 100,
+      "output": 20,
+      "cost": 0.001
+    },
+    "provider": "pi"
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:03Z",
+    "messageID": "a3",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "thanks"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:04Z",
+    "messageID": "a4",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "welcome"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 200,
+      "output": 30,
+      "cost": 0.002
+    },
+    "provider": "pi"
+  }
+]

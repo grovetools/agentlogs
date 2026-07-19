@@ -1,0 +1,68 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:01Z",
+    "messageID": "a1",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "old turn"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "a2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "old answer"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 100,
+      "output": 20,
+      "cost": 0.001
+    },
+    "provider": "pi"
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:04Z",
+    "messageID": "a4",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "new turn"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:05Z",
+    "messageID": "a5",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "new answer"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 300,
+      "output": 30,
+      "cost": 0.003
+    },
+    "provider": "pi"
+  }
+]

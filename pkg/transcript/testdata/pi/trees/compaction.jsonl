@@ -1,0 +1,6 @@
+{"type":"session","version":3,"id":"0198c2f4-0000-7abc-8def-000000000007","timestamp":"2026-07-01T10:00:00.000Z","cwd":"/Users/test/project"}
+{"type":"message","id":"a1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","message":{"role":"user","content":"old turn"}}
+{"type":"message","id":"a2","parentId":"a1","timestamp":"2026-07-01T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"old answer"}],"model":"claude-sonnet-4-5","usage":{"input":100,"output":20,"cacheRead":0,"cacheWrite":0,"totalTokens":100,"cost":{"total":0.001}},"stopReason":"stop"}}
+{"type":"compaction","id":"a3","parentId":"a2","timestamp":"2026-07-01T10:00:03.000Z","summary":"User asked about X.","firstKeptEntryId":"a2","tokensBefore":50000}
+{"type":"message","id":"a4","parentId":"a3","timestamp":"2026-07-01T10:00:04.000Z","message":{"role":"user","content":"new turn"}}
+{"type":"message","id":"a5","parentId":"a4","timestamp":"2026-07-01T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"new answer"}],"model":"claude-sonnet-4-5","usage":{"input":300,"output":30,"cacheRead":0,"cacheWrite":0,"totalTokens":100,"cost":{"total":0.003}},"stopReason":"stop"}}

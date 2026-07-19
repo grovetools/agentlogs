@@ -1,0 +1,35 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "g2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "do the task"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:03Z",
+    "messageID": "g3",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "done"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 100,
+      "output": 20,
+      "cost": 0.001
+    },
+    "provider": "pi"
+  }
+]

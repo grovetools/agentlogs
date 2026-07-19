@@ -1,0 +1,68 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:01Z",
+    "messageID": "a1",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "seed question"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "a2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "seed answer"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 100,
+      "output": 20,
+      "cost": 0.001
+    },
+    "provider": "pi"
+  },
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:05Z",
+    "messageID": "c3",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "arm C question"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:06Z",
+    "messageID": "c4",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "ARM C ANSWER"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 700,
+      "output": 70,
+      "cost": 0.07
+    },
+    "provider": "pi"
+  }
+]

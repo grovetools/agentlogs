@@ -1,0 +1,35 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "em000002",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "shared seed prefix"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:04Z",
+    "messageID": "em000004",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "variant answer"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 100,
+      "output": 20,
+      "cost": 0.001
+    },
+    "provider": "pi"
+  }
+]

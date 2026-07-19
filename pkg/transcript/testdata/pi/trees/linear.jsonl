@@ -1,0 +1,5 @@
+{"type":"session","version":3,"id":"0198c2f4-0000-7abc-8def-000000000001","timestamp":"2026-07-01T10:00:00.000Z","cwd":"/Users/test/project"}
+{"type":"message","id":"a1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","message":{"role":"user","content":"hello"}}
+{"type":"message","id":"a2","parentId":"a1","timestamp":"2026-07-01T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"hi there"}],"model":"claude-sonnet-4-5","usage":{"input":100,"output":20,"cacheRead":0,"cacheWrite":0,"totalTokens":100,"cost":{"total":0.001}},"stopReason":"stop"}}
+{"type":"message","id":"a3","parentId":"a2","timestamp":"2026-07-01T10:00:03.000Z","message":{"role":"user","content":"thanks"}}
+{"type":"message","id":"a4","parentId":"a3","timestamp":"2026-07-01T10:00:04.000Z","message":{"role":"assistant","content":[{"type":"text","text":"welcome"}],"model":"claude-sonnet-4-5","usage":{"input":200,"output":30,"cacheRead":0,"cacheWrite":0,"totalTokens":100,"cost":{"total":0.002}},"stopReason":"stop"}}

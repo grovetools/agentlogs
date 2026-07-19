@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"0198c2f4-0000-7abc-8def-000000000004","timestamp":"2026-07-01T10:00:00.000Z","cwd":"/Users/test/project"}
+{"type":"message","id":"a1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","message":{"role":"user","content":"fine"}}
+{"type":"message","id":"e1","parentId":"e2","timestamp":"2026-07-01T10:00:02.000Z","message":{"role":"user","content":"cycle one"}}
+{"type":"message","id":"e2","parentId":"e1","timestamp":"2026-07-01T10:00:03.000Z","message":{"role":"user","content":"cycle two"}}

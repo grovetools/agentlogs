@@ -34,7 +34,7 @@ concept docs. Skip if this was a trivial fix or docs-only change.
 [[test_scopes]]
 name = "metrics"
 rules = ".cx/metrics.rules"
-scenarios = ["aglogs-metrics-command"]
+scenarios = ["aglogs-metrics-command", "aglogs-metrics-pi-arms"]
 
 [[test_scopes]]
 name = "transcript-normalization"
