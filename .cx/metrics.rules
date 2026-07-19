@@ -18,6 +18,18 @@ pkg/metrics/filetools.go
 cmd/metrics.go
 cmd/root.go
 pkg/transcript/unified.go
+
+# The pi arm-attribution surface. The tree parser is what --branches,
+# --by-config and --emit-partials all read through, and the lift is where the
+# hand-written TypeScript ConfigVector mirror is validated against the Go
+# struct, so a change to either moves numbers this scope grades.
+pkg/transcript/pi_tree.go
+pkg/transcript/normalizer_pi.go
+pkg/transcript/pi_paths.go
+pkg/metrics/pi_grove.go
+pkg/metrics/pi_grove_metrics.go
+pkg/metrics/component_keys.go
+cmd/metrics_corpus.go
 pkg/transcript/normalizer_claude.go
 pkg/transcript/normalizer_codex.go
 pkg/transcript/normalizer_opencode.go

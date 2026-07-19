@@ -1,0 +1,16 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "h2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "legacy task"
+        }
+      }
+    ],
+    "provider": "pi"
+  }
+]

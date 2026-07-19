@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -268,6 +269,144 @@ func AglogsMetricsScenario() *harness.Scenario {
 				// axis, which flow owns.
 				if _, leaked := parsed["tokens"]; leaked {
 					return fmt.Errorf("token diagnostics leaked to the top level: %s", result.Stdout)
+				}
+				return nil
+			}),
+		},
+	}
+}
+
+// AglogsMetricsPiArmsScenario exercises the pi arm-attribution modes end to end
+// through the CLI: --branches, --emit-partials, and the --by-config argument
+// contract.
+//
+// Standing Rule 2: unit tests cover LiftGroveEntries and writeArmPartials, but
+// helper-level coverage does not discharge a call path reachable through a verb.
+// This grades the binary.
+//
+// It uses a committed fixture placed at a REAL pi session path — the provider
+// inference is structural (a .jsonl under sessions/--<munged-cwd>--/), and the
+// substring the old inference looked for never occurs in a real pi layout.
+func AglogsMetricsPiArmsScenario() *harness.Scenario {
+	return &harness.Scenario{
+		Name: "aglogs-metrics-pi-arms",
+		Steps: []harness.Step{
+			harness.NewStep("Stage a pi session at its real on-disk layout", func(ctx *harness.Context) error {
+				home := ctx.NewDir("pihome")
+				sessionDir := filepath.Join(home, ".pi", "agent", "sessions", "--Users-test-project--")
+				if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+					return err
+				}
+				src := filepath.Join("..", "..", "pkg", "transcript", "testdata", "pi", "trees", "grove_emitted.jsonl")
+				data, err := os.ReadFile(src)
+				if err != nil {
+					// The scenario runs from the built binary's cwd; try the
+					// repo-relative path too.
+					data, err = os.ReadFile(filepath.Join("pkg", "transcript", "testdata", "pi", "trees", "grove_emitted.jsonl"))
+					if err != nil {
+						return fmt.Errorf("staging fixture: %w", err)
+					}
+				}
+				path := filepath.Join(sessionDir, "2026-07-01T10-00-00-000Z_0198c2f4-9a51-7abc-8def-abcabcabcabc.jsonl")
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					return err
+				}
+				ctx.Set("pi_home", home)
+				ctx.Set("pi_session", path)
+				return nil
+			}),
+
+			harness.NewStep("--emit-partials writes envelope-only partials", func(ctx *harness.Context) error {
+				binary, err := FindProjectBinary()
+				if err != nil {
+					return err
+				}
+				outDir := filepath.Join(ctx.GetString("pi_home"), "partials")
+
+				cmd := command.New(binary, "metrics", ctx.GetString("pi_session"),
+					"--emit-partials", outDir).
+					Env("HOME=" + ctx.GetString("pi_home"))
+				result := cmd.Run()
+				ctx.ShowCommandOutput(cmd.String(), result.Stdout, result.Stderr)
+
+				if err := assert.Equal(0, result.ExitCode, "metrics --emit-partials should succeed"); err != nil {
+					return err
+				}
+
+				entries, err := os.ReadDir(outDir)
+				if err != nil {
+					return fmt.Errorf("no partials directory: %w", err)
+				}
+				if len(entries) != 1 {
+					return fmt.Errorf("wrote %d partials, want 1", len(entries))
+				}
+
+				raw, err := os.ReadFile(filepath.Join(outDir, entries[0].Name()))
+				if err != nil {
+					return err
+				}
+				var partial map[string]interface{}
+				if err := json.Unmarshal(raw, &partial); err != nil {
+					return fmt.Errorf("partial is not valid JSON: %w", err)
+				}
+				// agentlogs is the SOLE ComponentMetrics writer and never a Cost
+				// writer; a cost key here would collide with the fork runner's
+				// partial at join time instead of merging as a disjoint axis.
+				if _, leaked := partial["cost"]; leaked {
+					return fmt.Errorf("partial carries a cost axis: %s", raw)
+				}
+				for _, required := range []string{"schema", "key", "config"} {
+					if _, ok := partial[required]; !ok {
+						return fmt.Errorf("partial missing envelope field %q: %s", required, raw)
+					}
+				}
+				return nil
+			}),
+
+			harness.NewStep("--by-config rejects a spec rather than ignoring one", func(ctx *harness.Context) error {
+				binary, err := FindProjectBinary()
+				if err != nil {
+					return err
+				}
+				cmd := command.New(binary, "metrics", ctx.GetString("pi_session"),
+					"--by-config", "context").
+					Env("HOME=" + ctx.GetString("pi_home"))
+				result := cmd.Run()
+				ctx.ShowCommandOutput(cmd.String(), result.Stdout, result.Stderr)
+
+				if result.ExitCode == 0 {
+					return fmt.Errorf("combining --by-config with a spec should fail, got exit 0")
+				}
+				return nil
+			}),
+
+			harness.NewStep("--branches folds each arm on its own path", func(ctx *harness.Context) error {
+				binary, err := FindProjectBinary()
+				if err != nil {
+					return err
+				}
+				cmd := command.New(binary, "metrics", ctx.GetString("pi_session"),
+					"--branches", "--json").
+					Env("HOME=" + ctx.GetString("pi_home"))
+				result := cmd.Run()
+				ctx.ShowCommandOutput(cmd.String(), result.Stdout, result.Stderr)
+
+				if err := assert.Equal(0, result.ExitCode, "metrics --branches should succeed"); err != nil {
+					return err
+				}
+				start := strings.Index(result.Stdout, "[")
+				if start < 0 {
+					return fmt.Errorf("metrics --branches emitted no JSON array: %s", result.Stdout)
+				}
+				var arms []map[string]interface{}
+				if err := json.Unmarshal([]byte(result.Stdout[start:]), &arms); err != nil {
+					return fmt.Errorf("metrics --branches did not emit valid JSON: %w", err)
+				}
+				if len(arms) != 1 {
+					return fmt.Errorf("got %d arms, want 1 for this linear arm file", len(arms))
+				}
+				if attributed, _ := arms[0]["attributed"].(bool); !attributed {
+					return fmt.Errorf("arm is not attributed; the grove_config stamp did not lift: %s", result.Stdout)
 				}
 				return nil
 			}),

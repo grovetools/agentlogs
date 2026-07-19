@@ -110,16 +110,31 @@ func TestComputeUnknownToolsContributeNothing(t *testing.T) {
 			toolPart("Bash", map[string]interface{}{"command": "rm -rf /repo/a.go"}),
 			toolPart("WebFetch", map[string]interface{}{"url": "https://example.com"}),
 			toolPart("TodoWrite", map[string]interface{}{"todos": []interface{}{}}),
+			// THE PROVIDER CONTROL — do not remove.
+			//
+			// `read` (lowercase) is pi's row, not claude's, and it is keyed on
+			// "path" where claude's Read is keyed on "file_path". This entry is
+			// claude, so the PROVIDER predicate in fileTouches.observe must
+			// reject it.
+			//
+			// Every other non-matching call above is keyed on command/url/todos,
+			// which the later empty-path predicate rejects anyway — so without
+			// THIS row, deleting the provider check from the rule match changes
+			// nothing and the provider column of fileToolTable is unpinned. This
+			// row is the only one that tells the two predicates apart.
+			toolPart("read", map[string]interface{}{"path": "/repo/pi_keyed.go"}),
 		}},
 	}
 
 	got := Compute(entries)
 
-	if iv(got.ToolCalls) != 3 {
-		t.Errorf("ToolCalls = %d, want 3", iv(got.ToolCalls))
+	if iv(got.ToolCalls) != 4 {
+		t.Errorf("ToolCalls = %d, want 4", iv(got.ToolCalls))
 	}
 	if n := deref(t, got.FilesTouched, "FilesTouched"); n != 0 {
-		t.Errorf("FilesTouched = %d, want 0 (measured zero, not nil)", n)
+		t.Errorf("FilesTouched = %d, want 0 (measured zero, not nil); touched=%v. "+
+			"A 1 here means a pi rule matched a claude entry — the provider column "+
+			"of fileToolTable is not being applied.", n, got.TouchedFiles)
 	}
 	if len(got.Unsupported) != 0 {
 		t.Errorf("Unsupported = %v, want empty: claude IS measurable, it just touched nothing", got.Unsupported)
@@ -147,12 +162,73 @@ func TestComputeMalformedInputContributesNothing(t *testing.T) {
 	}
 }
 
+// --- P6-15: pi is measurable ---------------------------------------------
+
+// pi's file-taking tools (read/grep/find/ls/edit/write) all spell the argument
+// "path"; bash takes {command, timeout} and contributes nothing. Previously pi
+// was declared unsupported, so these counts came back nil — "cannot measure"
+// for something that is plainly measurable, which is a D4 error in the
+// optimistic direction.
+func TestComputePiCountsPathKeyedTools(t *testing.T) {
+	entries := []transcript.UnifiedEntry{
+		{Role: "user", Provider: "pi", Parts: []transcript.UnifiedPart{textPart("go")}},
+		{Role: "assistant", Provider: "pi", Parts: []transcript.UnifiedPart{
+			// Every tool below reads a path NO other tool touches. Sharing a
+			// path between read and edit would let the edit row cover for a
+			// missing read row, and the mutation "drop the read row" would pass
+			// — which is exactly what happened on the first draft of this test.
+			toolPart("read", map[string]interface{}{"path": "/repo/only-read.go"}),
+			toolPart("edit", map[string]interface{}{"path": "/repo/util.go"}),
+			toolPart("write", map[string]interface{}{"path": "/repo/new.go"}),
+			toolPart("grep", map[string]interface{}{"pattern": "func", "path": "/repo/pkg"}),
+			toolPart("ls", map[string]interface{}{"path": "/repo"}),
+			toolPart("find", map[string]interface{}{"pattern": "*.go", "path": "/repo/cmd"}),
+			toolPart("bash", map[string]interface{}{"command": "go test ./..."}),
+		}},
+	}
+
+	got := Compute(entries)
+
+	if len(got.Unsupported) != 0 {
+		t.Errorf("Unsupported = %v, want empty", got.Unsupported)
+	}
+	wantTouched := []string{"/repo", "/repo/cmd", "/repo/new.go", "/repo/only-read.go", "/repo/pkg", "/repo/util.go"}
+	wantEdited := []string{"/repo/new.go", "/repo/util.go"}
+
+	if n := deref(t, got.FilesTouched, "FilesTouched"); n != len(wantTouched) {
+		t.Errorf("FilesTouched = %d, want %d; touched=%v", n, len(wantTouched), got.TouchedFiles)
+	}
+	if n := deref(t, got.FilesEdited, "FilesEdited"); n != len(wantEdited) {
+		t.Errorf("FilesEdited = %d, want %d; edited=%v", n, len(wantEdited), got.EditedFiles)
+	}
+	for i, want := range wantTouched {
+		if got.TouchedFiles[i] != want {
+			t.Errorf("TouchedFiles[%d] = %q, want %q", i, got.TouchedFiles[i], want)
+		}
+	}
+	for i, want := range wantEdited {
+		if got.EditedFiles[i] != want {
+			t.Errorf("EditedFiles[%d] = %q, want %q", i, got.EditedFiles[i], want)
+		}
+	}
+	// bash's shell string is not a path and must not be counted as one.
+	for _, f := range got.TouchedFiles {
+		if strings.Contains(f, "go test") {
+			t.Errorf("bash command leaked into touched files: %q", f)
+		}
+	}
+}
+
 // --- P1-20: the unsupported-provider ruling ------------------------------
 
 func TestComputeUnsupportedProviders(t *testing.T) {
 	// Each of these providers exposes file work only through opaque shell
 	// strings or unnameable tools; see providerSupported's doc comment.
-	for _, provider := range []string{"codex", "pi", "opencode"} {
+	//
+	// pi was on this list and has been REMOVED: its six file-taking tools all
+	// key on "path", so it is genuinely measurable and now has rows in
+	// fileToolTable. See TestComputePiCountsPathKeyedTools below.
+	for _, provider := range []string{"codex", "opencode"} {
 		t.Run(provider, func(t *testing.T) {
 			entries := []transcript.UnifiedEntry{
 				{Role: "user", Provider: provider, Parts: []transcript.UnifiedPart{textPart("go")}},
@@ -225,6 +301,34 @@ func TestResultJSONOmitsUnmeasuredCounts(t *testing.T) {
 }
 
 // --- P1-18: the fold -----------------------------------------------------
+
+// The PROVIDER detection loop skips sidechains too, and that skip needs its own
+// control.
+//
+// TestComputeExcludesSidechainEntries cannot pin it: every entry there declares
+// provider "claude", so removing the skip from the provider loop yields the same
+// answer either way. Here the sidechain entry comes FIRST and declares a
+// different provider, so whichever entry the loop reaches first decides the
+// result — which is exactly the distinction the skip makes.
+//
+// Mandatory mutation: remove `if entry.IsSidechain { continue }` from the
+// provider loop -> this must FAIL with "pi".
+func TestComputeProviderIgnoresSidechainEntries(t *testing.T) {
+	entries := []transcript.UnifiedEntry{
+		// A subagent running a different provider, ahead of any main-chain entry.
+		{Role: "assistant", Provider: "pi", IsSidechain: true, AgentID: "sub-1",
+			Parts: []transcript.UnifiedPart{textPart("subagent work")}},
+		{Role: "user", Provider: "claude", Parts: []transcript.UnifiedPart{textPart("main turn")}},
+	}
+
+	got := Compute(entries)
+
+	if got.Provider != "claude" {
+		t.Errorf("Provider = %q, want claude. The provider is a property of the "+
+			"MAIN chain; taking it from a sidechain entry mislabels the whole "+
+			"record's Process axis.", got.Provider)
+	}
+}
 
 func TestComputeExcludesSidechainEntries(t *testing.T) {
 	entries := []transcript.UnifiedEntry{

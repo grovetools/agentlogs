@@ -1,7 +1,6 @@
 package transcript
 
 import (
-	"bufio"
 	"encoding/json"
 	"io"
 	"time"
@@ -48,6 +47,20 @@ type piFileEntry struct {
 	// type == "custom_message" (extension-injected context, string or blocks)
 	Content json.RawMessage `json:"content"`
 	Display *bool           `json:"display"`
+	// type == "custom": extension state persistence. The persisted entry type
+	// is always "custom"; the writer controls only CustomType, and the payload
+	// rides in Data (CustomEntry, packages/coding-agent/src/core/
+	// session-manager.ts: { type: "custom", customType: string, data?: T }).
+	// There is no Content and no Display on a custom entry — those belong to
+	// the distinct custom_message type above.
+	//
+	// custom entries do NOT participate in the LLM context
+	// (sessionEntryToContextMessages returns [] for them), which is exactly why
+	// grove stamps its config vector as one: it persists without perturbing the
+	// prompt bytes. They are correspondingly invisible to the rendered
+	// transcript — normalizePiEntry must keep returning nil for them.
+	CustomType string          `json:"customType"`
+	Data       json.RawMessage `json:"data"`
 }
 
 // piMessage is the AgentMessage payload of a "message" entry
@@ -275,55 +288,18 @@ func piTextParts(content json.RawMessage) []UnifiedPart {
 // walks the file in order and leaves leafId at the LAST entry, so the active
 // path is "last line, then follow parentId to the root". Entries on abandoned
 // branches are dropped, exactly like pi drops them when rebuilding context.
+// It is a thin wrapper over ParsePiSessionTree: parse the tree, take its
+// active path, normalize it. The tree API is the general form (a file can hold
+// several branches); this is the one question the renderer asks of it. Rendered
+// output is regression-pinned by the golden fixtures in pi_tree_test.go, which
+// were captured from the pre-refactor implementation.
 func NormalizePiFile(r io.Reader) ([]UnifiedEntry, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-
-	var order []*piFileEntry
-	byID := make(map[string]*piFileEntry)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var raw piFileEntry
-		if err := json.Unmarshal(line, &raw); err != nil {
-			continue // tolerate torn/partial lines (live files)
-		}
-		if raw.Type == "session" || raw.ID == "" {
-			continue
-		}
-		entry := raw
-		order = append(order, &entry)
-		byID[entry.ID] = &entry
-	}
-	if err := scanner.Err(); err != nil {
+	tree, err := ParsePiSessionTree(r)
+	if err != nil {
 		return nil, err
 	}
-	if len(order) == 0 {
+	if tree == nil {
 		return nil, nil
 	}
-
-	// Walk leaf -> root, then reverse.
-	var path []*piFileEntry
-	seen := make(map[string]bool)
-	for cur := order[len(order)-1]; cur != nil; {
-		if seen[cur.ID] {
-			break // cycle guard (malformed file)
-		}
-		seen[cur.ID] = true
-		path = append(path, cur)
-		if cur.ParentID == nil || *cur.ParentID == "" {
-			break
-		}
-		cur = byID[*cur.ParentID]
-	}
-
-	entries := make([]UnifiedEntry, 0, len(path))
-	for i := len(path) - 1; i >= 0; i-- {
-		if entry := normalizePiEntry(path[i]); entry != nil {
-			entries = append(entries, *entry)
-		}
-	}
-	return entries, nil
+	return tree.Normalize(tree.ActivePath()), nil
 }

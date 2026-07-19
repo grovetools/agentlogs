@@ -1,0 +1,35 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:01Z",
+    "messageID": "a1",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "before the tear"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:02Z",
+    "messageID": "a2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "answer"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 100,
+      "output": 20,
+      "cost": 0.001
+    },
+    "provider": "pi"
+  }
+]

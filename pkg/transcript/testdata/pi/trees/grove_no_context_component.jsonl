@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"0198c2f4-0000-7abc-8def-000000000013","timestamp":"2026-07-01T10:00:00.000Z","cwd":"/repo"}
+{"type":"custom","id":"n1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","customType":"grove_config","data":{"config":{"model":"anthropic/claude-sonnet-4-5","provider":"pi","components":{"memory":"m1","plan":"pl1","prompt":"p-seed","skills":"s1"}},"schema":"0.2.0","job_id":"plan/job.md","task_id":"t-no-context","replicate":0,"grove_metrics_version":"0.2.0"}}
+{"type":"message","id":"n2","parentId":"n1","timestamp":"2026-07-01T10:00:02.000Z","message":{"role":"user","content":"go"}}
+{"type":"message","id":"n3","parentId":"n2","timestamp":"2026-07-01T10:00:03.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"t1","name":"read","arguments":{"path":"a.go"}}],"model":"claude-sonnet-4-5","usage":{"input":100,"output":20,"cacheRead":0,"cacheWrite":0,"totalTokens":120,"cost":{"total":0.001}},"stopReason":"stop"}}

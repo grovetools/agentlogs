@@ -36,6 +36,42 @@ func PiSessionsDir(homeDir, workDir string) string {
 	return filepath.Join(homeDir, ".pi", "agent", "sessions", PiSessionDirName(workDir))
 }
 
+// IsPiSessionPath reports whether a filesystem path looks like a pi session
+// transcript file.
+//
+// It recognizes the layout STRUCTURALLY rather than by matching a fixed prefix,
+// because the whole ~/.pi/agent prefix is overridable via PI_CODING_AGENT_DIR:
+// a pi session file is a .jsonl whose parent directory is a munged-cwd
+// directory ("--Users-foo-bar--", see PiSessionDirName) sitting under a
+// directory named "sessions". That shape survives the env override, and it also
+// matches the committed testdata layout, whereas any absolute-prefix match
+// would not.
+//
+// The "/.pi/" fallback mirrors providerFromTranscriptPath in
+// internal/session/scanner.go, which is the repo's existing (and correct)
+// spelling of this inference.
+//
+// Note the substring "/pi/sessions/" — used by an earlier version of
+// cmd/metrics.go — never occurs in a real pi path, because the real layout is
+// ~/.pi/agent/sessions/. Matching it silently resolved every pi transcript as
+// claude.
+func IsPiSessionPath(path string) bool {
+	if strings.Contains(filepath.ToSlash(path), "/.pi/") {
+		return true
+	}
+	if strings.ToLower(filepath.Ext(path)) != ".jsonl" {
+		return false
+	}
+	parent := filepath.Base(filepath.Dir(path))
+	grandparent := filepath.Base(filepath.Dir(filepath.Dir(path)))
+	return grandparent == PiSessionsDirName &&
+		len(parent) >= 4 && strings.HasPrefix(parent, "--") && strings.HasSuffix(parent, "--")
+}
+
+// PiSessionsDirName is the directory segment pi stores per-cwd session
+// directories under: ~/.pi/agent/<PiSessionsDirName>/--<munged-cwd>--/.
+const PiSessionsDirName = "sessions"
+
 // PiSessionsGlob returns the glob pattern matching pi session transcript
 // files under homeDir, across all per-cwd session subdirectories:
 //

@@ -14,11 +14,15 @@ import (
 	"github.com/grovetools/agentlogs/internal/provider"
 	"github.com/grovetools/agentlogs/internal/session"
 	"github.com/grovetools/agentlogs/pkg/metrics"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 func newMetricsCmd() *cobra.Command {
 	var jsonOutput bool
 	var showFiles bool
+	var byConfig string
+	var branches bool
+	var emitPartials string
 
 	cmd := cli.NewStandardCommand("metrics", "Compute process metrics for a session")
 	cmd.Use = "metrics <spec>"
@@ -39,10 +43,34 @@ cross-checks only, not evaluation axes.
 
 This command always reads transcripts from disk. Its output does not depend on
 whether the grove daemon is running.`
-	cmd.Args = cobra.ExactArgs(1)
+	// Corpus mode takes no spec, so the arity is checked in RunE against the
+	// selected mode rather than declared as a fixed count.
+	cmd.Args = cobra.MaximumNArgs(1)
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		corpusMode := byConfig != "" || (emitPartials != "" && len(args) == 0)
+
+		// Reject the ambiguous combination outright rather than silently
+		// ignoring one of the two inputs.
+		if byConfig != "" && len(args) > 0 {
+			return fmt.Errorf(
+				"--by-config groups a whole corpus and takes no <spec>; got %q.\n"+
+					"Run it without a spec to scan every pi session, or drop --by-config "+
+					"to measure that one session", args[0])
+		}
+		if !corpusMode && len(args) == 0 {
+			return fmt.Errorf("a <spec> is required unless --by-config or --emit-partials selects corpus mode")
+		}
+
+		if corpusMode {
+			return runCorpusMetrics(byConfig, branches, emitPartials, jsonOutput)
+		}
+
 		spec := args[0]
+
+		if branches || emitPartials != "" {
+			return runSessionBranchMetrics(spec, branches, emitPartials, jsonOutput)
+		}
 
 		sessionInfo, err := resolveMetricsSession(spec)
 		if err != nil {
@@ -90,6 +118,16 @@ whether the grove daemon is running.`
 
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	cmd.Flags().BoolVar(&showFiles, "files", false, "Include the touched/edited file lists")
+	cmd.Flags().StringVar(&byConfig, "by-config", "",
+		"Group the whole pi session corpus by one config component "+
+			"(prompt|context|memory|skills|plan|briefing). Takes no <spec>.")
+	cmd.Flags().BoolVar(&branches, "branches", false,
+		"Fold each branch of a session file separately instead of only the active path. "+
+			"For genuinely multi-arm files (in-place branch/navigateTree, the TUI's /tree). "+
+			"Sweep arms are one file each and do NOT need this.")
+	cmd.Flags().StringVar(&emitPartials, "emit-partials", "",
+		"Write one partial run record per attributed arm into <dir> "+
+			"(envelope + component metrics only; never cost, which the runner owns)")
 
 	return cmd
 }
@@ -112,7 +150,12 @@ func resolveMetricsSession(spec string) (*session.SessionInfo, error) {
 		prov = "codex"
 	} else if strings.Contains(spec, "/opencode/storage/") {
 		prov = "opencode"
-	} else if strings.Contains(spec, "/pi/sessions/") {
+	} else if transcript.IsPiSessionPath(spec) {
+		// Was strings.Contains(spec, "/pi/sessions/"), which never matches a
+		// real pi transcript: the layout is ~/.pi/agent/sessions/. Every pi
+		// session silently resolved as claude and was folded through the claude
+		// normalizer. The layout predicate lives in pkg/transcript beside the
+		// rest of the pi path vocabulary.
 		prov = "pi"
 	}
 

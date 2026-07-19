@@ -1,0 +1,35 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:03Z",
+    "messageID": "d1",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "orphaned question"
+        }
+      }
+    ],
+    "provider": "pi"
+  },
+  {
+    "role": "assistant",
+    "timestamp": "2026-07-01T10:00:04Z",
+    "messageID": "d2",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "orphaned answer"
+        }
+      }
+    ],
+    "tokens": {
+      "input": 300,
+      "output": 30,
+      "cost": 0.003
+    },
+    "provider": "pi"
+  }
+]

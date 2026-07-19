@@ -1,0 +1,16 @@
+[
+  {
+    "role": "user",
+    "timestamp": "2026-07-01T10:00:01Z",
+    "messageID": "l1",
+    "parts": [
+      {
+        "type": "text",
+        "content": {
+          "text": "no stamp here"
+        }
+      }
+    ],
+    "provider": "pi"
+  }
+]

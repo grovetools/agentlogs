@@ -7,16 +7,22 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/grovetools/agentlogs/internal/provider"
 	"github.com/grovetools/agentlogs/pkg/metrics"
+	"github.com/grovetools/agentlogs/pkg/transcript"
 )
 
 const (
 	claudeFixture = "../pkg/metrics/testdata/claude/session-metrics-fixture.jsonl"
 	codexFixture  = "../pkg/transcript/testdata/codex/sessions/2026/07/01/rollout-2026-07-01T10-00-00-5973b6c0-94b8-487b-a530-2aeb6098ae0e.jsonl"
 	piFixture     = "../pkg/transcript/testdata/pi/sessions/--Users-test-project--/2026-07-01T10-00-00-000Z_0198c2f4-9a51-7abc-8def-0123456789ab.jsonl"
+	// A pi session exercising the file-taking tools. The older piFixture calls
+	// only bash, which is exactly why the "pi has no structured path key"
+	// conclusion survived as long as it did.
+	piFileToolsFixture = "../pkg/transcript/testdata/pi/sessions/--Users-test-project--/2026-07-02T10-00-00-000Z_0198c2f4-9a51-7abc-8def-0123456789ff.jsonl"
 )
 
 // iv/fv dereference the D4 "nil = not measured" pointers for assertions,
@@ -119,6 +125,68 @@ func TestResolveMetricsSessionInfersProvider(t *testing.T) {
 				t.Errorf("LogFilePath = %q, want %q", info.LogFilePath, tc.path)
 			}
 		})
+	}
+}
+
+// Provider inference runs on the path STRING, so it can be table-tested over
+// representative layouts without those files existing. resolveMetricsSession
+// stats the path first, so these go through the predicate directly.
+//
+// The pi rows are the point: the real layout is ~/.pi/agent/sessions/, so the
+// old "/pi/sessions/" substring matched nothing and every pi transcript
+// resolved as claude. The PI_CODING_AGENT_DIR row pins that the predicate is
+// structural rather than anchored to the ~/.pi prefix.
+func TestIsPiSessionPathDiscriminatesProviderLayouts(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"real pi layout", "/Users/x/.pi/agent/sessions/--Users-x-proj--/2026-07-01T10-00-00-000Z_0198c2f4.jsonl", true},
+		{"PI_CODING_AGENT_DIR override", "/tmp/custom-agent-dir/sessions/--Users-x-proj--/2026-07-01T10-00-00-000Z_0198c2f4.jsonl", true},
+		{"committed testdata layout", piFixture, true},
+		{"claude project transcript", "/Users/x/.claude/projects/-Users-x-proj/0198c2f4.jsonl", false},
+		{"codex rollout", "/Users/x/.codex/sessions/2026/07/01/rollout-2026-07-01T10-00-00-5973b6c0.jsonl", false},
+		{"opencode storage", "/Users/x/opencode/storage/session/ses_abc123.json", false},
+		{"sessions dir but not munged-cwd child", "/tmp/agent/sessions/plain/0198c2f4.jsonl", false},
+		{"munged-cwd child but not under sessions", "/tmp/agent/other/--Users-x-proj--/0198c2f4.jsonl", false},
+		{"right shape, wrong extension", "/tmp/agent/sessions/--Users-x-proj--/notes.md", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := transcript.IsPiSessionPath(tc.path); got != tc.want {
+				t.Errorf("IsPiSessionPath(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+// The predicate must reach resolveMetricsSession, not just exist. Standing
+// Rule 2: helper-level coverage does not discharge the call path. This uses a
+// real file at a real-shaped pi location so the os.Stat branch is taken.
+func TestResolveMetricsSessionInfersPiFromRealLayout(t *testing.T) {
+	dir := t.TempDir()
+	sessionDir := filepath.Join(dir, ".pi", "agent", "sessions", "--Users-test-project--")
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	src, err := os.ReadFile(piFixture)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	path := filepath.Join(sessionDir, "2026-07-01T10-00-00-000Z_0198c2f4-9a51-7abc-8def-0123456789ab.jsonl")
+	if err := os.WriteFile(path, src, 0o644); err != nil {
+		t.Fatalf("write fixture copy: %v", err)
+	}
+
+	info, err := resolveMetricsSession(path)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if info.Provider != "pi" {
+		t.Errorf("Provider = %q, want pi — a pi transcript at its REAL on-disk "+
+			"location must not fold through the claude normalizer", info.Provider)
 	}
 }
 
@@ -249,17 +317,29 @@ func TestGoldenCodexFixtureYieldsNilFileCounts(t *testing.T) {
 	}
 }
 
-func TestGoldenPiFixtureYieldsNilFileCounts(t *testing.T) {
+// pi is now a SUPPORTED provider (its six file-taking tools all key on "path"),
+// so this fixture — whose only tool is bash — reports a MEASURED ZERO rather
+// than "unsupported". The distinction is the whole point of D4: bash genuinely
+// touches no structured path, which is a real observation, not a gap in what we
+// can see.
+func TestGoldenPiFixtureMeasuresZeroFilesForBashOnly(t *testing.T) {
 	got := computeFixture(t, piFixture)
 
 	if got.Provider != "pi" {
 		t.Errorf("Provider = %q, want pi", got.Provider)
 	}
-	if got.FilesTouched != nil {
-		t.Errorf("FilesTouched = %d, want nil", *got.FilesTouched)
+	if got.FilesTouched == nil {
+		t.Fatal("FilesTouched = nil, want a measured 0 — pi is supported")
 	}
-	want := []string{metrics.UnsupportedFilesTouched, metrics.UnsupportedFilesEdited}
-	assertPaths(t, "unsupported", got.Unsupported, want)
+	if *got.FilesTouched != 0 {
+		t.Errorf("FilesTouched = %d, want 0", *got.FilesTouched)
+	}
+	if got.FilesEdited == nil || *got.FilesEdited != 0 {
+		t.Errorf("FilesEdited = %v, want a measured 0", got.FilesEdited)
+	}
+	if len(got.Unsupported) != 0 {
+		t.Errorf("Unsupported = %v, want empty — pi is measurable", got.Unsupported)
+	}
 
 	// The only pi tool is bash.
 	if iv(got.ToolCalls) != 1 {
@@ -267,6 +347,48 @@ func TestGoldenPiFixtureYieldsNilFileCounts(t *testing.T) {
 	}
 	if iv(got.Turns) != 2 {
 		t.Errorf("Turns = %d, want 2", iv(got.Turns))
+	}
+}
+
+// The ⚠ P6-15 asked for: prove the arguments survive the whole path —
+// piContentBlock.Arguments -> UnifiedToolCall.Input -> partToolCall -> the
+// file-touch table — rather than trusting that the normalizer looks correct.
+// No such fixture existed, so this one exercises read/edit/write/grep/bash.
+func TestGoldenPiFileToolsFixtureCountsRealPaths(t *testing.T) {
+	got := computeFixture(t, piFileToolsFixture)
+
+	if got.Provider != "pi" {
+		t.Fatalf("Provider = %q, want pi", got.Provider)
+	}
+
+	// read + edit + grep + write contribute paths; bash contributes nothing.
+	// read targets /repo/only-read.go, which nothing else touches, so the read
+	// row is genuinely load-bearing and "drop the read row" is a detectable
+	// mutation. Pointing read at a file that edit also touches would let the
+	// edit row silently cover for it.
+	wantTouched := []string{"/repo/new.go", "/repo/only-read.go", "/repo/pkg", "/repo/util.go"}
+	wantEdited := []string{"/repo/new.go", "/repo/util.go"}
+
+	if got.FilesTouched == nil || *got.FilesTouched != len(wantTouched) {
+		t.Fatalf("FilesTouched = %v, want %d", got.FilesTouched, len(wantTouched))
+	}
+	if got.FilesEdited == nil || *got.FilesEdited != len(wantEdited) {
+		t.Fatalf("FilesEdited = %v, want %d", got.FilesEdited, len(wantEdited))
+	}
+	assertPaths(t, "touched", got.TouchedFiles, wantTouched)
+	assertPaths(t, "edited", got.EditedFiles, wantEdited)
+
+	// bash's {"command": "..."} must never be read as a path.
+	for _, f := range got.TouchedFiles {
+		if f == "go test ./..." {
+			t.Error("bash command leaked into touched files")
+		}
+	}
+	if len(got.Unsupported) != 0 {
+		t.Errorf("Unsupported = %v, want empty", got.Unsupported)
+	}
+	if iv(got.ToolCalls) != 5 {
+		t.Errorf("ToolCalls = %d, want 5", iv(got.ToolCalls))
 	}
 }
 
