@@ -1,0 +1,8 @@
+{
+  "todos": [
+    {"content": "Read the parser", "status": "completed", "activeForm": "Reading the parser"},
+    {"content": "Write the tests", "status": "in_progress", "activeForm": "Writing the tests"},
+    {"content": "Run the gate", "status": "pending", "activeForm": "Running the gate"},
+    {"content": "Report back", "status": "some_unknown_status", "activeForm": "Reporting back"}
+  ]
+}

@@ -30,3 +30,13 @@ public interfaces, invoke the concept-maintainer skill to update or add
 concept docs. Skip if this was a trivial fix or docs-only change.
 """
 
+
+[[test_scopes]]
+name = "metrics"
+rules = ".cx/metrics.rules"
+scenarios = ["aglogs-metrics-command"]
+
+[[test_scopes]]
+name = "transcript-normalization"
+rules = ".cx/transcript-normalization.rules"
+scenarios = ["aglogs-metrics-command", "clogs-query-command", "clogs-tail-command"]

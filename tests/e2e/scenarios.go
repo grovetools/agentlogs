@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/grovetools/tend/pkg/assert"
 	"github.com/grovetools/tend/pkg/command"
@@ -207,6 +208,68 @@ func ClogsQueryScenario() *harness.Scenario {
 					return err
 				}
 				return assert.Contains(result.Stdout, "user:", "Should show user messages")
+			}),
+		},
+	}
+}
+
+// AglogsMetricsScenario exercises the `aglogs metrics` deterministic fold over
+// a real transcript, end to end through the CLI.
+//
+// The fold must be a pure function of the transcript bytes: no daemon, no
+// network, no ambient state. This scenario runs against the same mock claude
+// home the other scenarios use, so a change that makes metrics depend on
+// anything outside the session file shows up here as a diff.
+func AglogsMetricsScenario() *harness.Scenario {
+	return &harness.Scenario{
+		Name: "aglogs-metrics-command",
+		Steps: []harness.Step{
+			harness.NewStep("Setup mock Claude directory", setupMockClaudeDir),
+			harness.NewStep("Run 'aglogs metrics --json' and verify the fold", func(ctx *harness.Context) error {
+				binary, err := FindProjectBinary()
+				if err != nil {
+					return err
+				}
+
+				homeDir := ctx.GetString("mock_home")
+				cmd := command.New(binary, "metrics", "session-alpha", "--json").
+					Env("HOME=" + homeDir)
+				result := cmd.Run()
+				ctx.ShowCommandOutput(cmd.String(), result.Stdout, result.Stderr)
+
+				if err := assert.Equal(0, result.ExitCode, "aglogs metrics should exit successfully"); err != nil {
+					return err
+				}
+
+				// Ambient grove logging (daemon startup, workspace discovery
+				// warnings) can precede the payload on stdout, so slice from
+				// the first brace rather than assuming a clean stream.
+				start := strings.Index(result.Stdout, "{")
+				if start < 0 {
+					return fmt.Errorf("metrics --json emitted no JSON object: %s", result.Stdout)
+				}
+				var parsed map[string]interface{}
+				if err := json.Unmarshal([]byte(result.Stdout[start:]), &parsed); err != nil {
+					return fmt.Errorf("metrics --json did not emit valid JSON: %w", err)
+				}
+
+				// The fixture has two user text turns and no tool calls, so the
+				// fold must report exactly that — not a zero, and not a guess.
+				turns, ok := parsed["turns"]
+				if !ok {
+					return fmt.Errorf("metrics output has no `turns` key: %s", result.Stdout)
+				}
+				if turns != float64(2) {
+					return fmt.Errorf("turns = %v, want 2 for the two user text messages", turns)
+				}
+
+				// Token/cost diagnostics must stay quarantined under
+				// `diagnostics` so the joiner cannot mistake them for the Cost
+				// axis, which flow owns.
+				if _, leaked := parsed["tokens"]; leaked {
+					return fmt.Errorf("token diagnostics leaked to the top level: %s", result.Stdout)
+				}
+				return nil
 			}),
 		},
 	}

@@ -5,6 +5,7 @@ go 1.24.4
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/grovetools/core v0.6.3
+	github.com/grovetools/eval v0.0.0-00010101000000-000000000000
 	github.com/grovetools/tend v0.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/sirupsen/logrus v1.9.3
@@ -53,3 +54,9 @@ require (
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 )
+
+// eval has no published release yet; the require above carries the null
+// pseudo-version and this replace resolves it from the local worktree so
+// builds work with GOWORK off too. Land-time: publish eval, bump the require
+// to the tagged version, and drop this replace (go.work already `use`s it).
+replace github.com/grovetools/eval => ../eval

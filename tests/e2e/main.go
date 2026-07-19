@@ -14,6 +14,7 @@ func main() {
 		ClogsListScenario(),
 		ClogsTailScenario(),
 		ClogsQueryScenario(),
+		AglogsMetricsScenario(),
 	}
 
 	if err := app.Execute(context.Background(), scenarios); err != nil {

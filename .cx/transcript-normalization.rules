@@ -1,0 +1,18 @@
+# transcript normalization rules
+# Scopes the claude transcript parser and the tool-payload formatters — the
+# path every downstream metric is folded from.
+#
+# Both packages had zero tests before P1; the parser's incremental-read
+# contract (ParseFileFromOffset returning a resumable offset with no duplicated
+# or lost messages) is what the live monitor depends on, and the formatters
+# read the same tool payload keys the metrics file-touch table reads. A silent
+# regression here is a silent measurement error everywhere downstream, which is
+# why this is scope-graded rather than left to whole-repo test runs.
+# Paths are relative to the agentlogs repo root.
+
+pkg/claudelogs/parser.go
+pkg/claudelogs/monitor.go
+pkg/formatters/formatters.go
+pkg/transcript/parser.go
+pkg/transcript/unified.go
+tests/e2e/scenarios.go
