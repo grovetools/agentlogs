@@ -165,9 +165,8 @@ func TestEmitPartialsWritesEnvelopeAndMetricsOnly(t *testing.T) {
 		t.Errorf("Key.ConfigHash %q != Config.Hash() %q — the joiner keys on this",
 			partial.Key.ConfigHash, partial.Config.Hash())
 	}
-	// Wave one's honest outcome: no component metrics exist to write.
-	if len(partial.ComponentMetrics) != 0 {
-		t.Errorf("ComponentMetrics = %v, want empty in wave one", partial.ComponentMetrics)
+	if got := partial.ComponentMetrics["knowledge.tool_result_bytes"]; got != 17 {
+		t.Errorf("knowledge.tool_result_bytes = %v, want 17 from grove_metric lift", got)
 	}
 }
 

@@ -1,0 +1,3 @@
+{"type":"session","version":3,"id":"0198c2f4-0000-7abc-8def-0000000000f1","timestamp":"2026-07-01T10:00:00.000Z","cwd":"/repo"}
+{"type":"custom","id":"c1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","customType":"grove_config","data":{"config":{"model":"m","provider":"pi","components":{"judge_prompt":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","knowledge_tools":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"schema":"0.2.0","task_id":"architecture-task","replicate":0,"sweep":true}}
+{"type":"custom","id":"m1","parentId":"c1","timestamp":"2026-07-01T10:00:02.000Z","customType":"grove_metric","data":{"metrics":{"knowledge.tool_result_bytes":17},"turns":2,"tool_counts":{"grove_concepts":1,"grove_memory":2,"read":3}}}
