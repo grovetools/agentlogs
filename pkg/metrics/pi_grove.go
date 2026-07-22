@@ -60,6 +60,10 @@ type PiGroveMeta struct {
 	// nil means no grove_metric entry was present. An empty non-nil map means an
 	// entry was present but contributed no valid keys. Neither is a zero.
 	Metrics map[string]float64
+	// Turns and ToolCounts are diagnostics carried beside (never inside)
+	// ComponentMetrics. The last grove_metric entry on the branch wins.
+	Turns      *int
+	ToolCounts map[string]int
 	// SeedBundlePaths is the seed manifest's bundle list when one was stamped.
 	// Nothing writes one today, so this is essentially always nil.
 	SeedBundlePaths []string
@@ -122,7 +126,9 @@ type groveConfigData struct {
 
 // groveMetricData is a grove_metric entry's data.
 type groveMetricData struct {
-	Metrics map[string]float64 `json:"metrics"`
+	Metrics    map[string]float64 `json:"metrics"`
+	Turns      *int               `json:"turns"`
+	ToolCounts map[string]int     `json:"tool_counts"`
 }
 
 // legacyConfigScalars are the keys the LEGACY flat grove_config shape carries
@@ -386,6 +392,13 @@ func liftMetricEntry(entry transcript.PiCustomEntry, meta *PiGroveMeta) []LiftWa
 	// "reported nothing valid"; nil stays "never reported".
 	if meta.Metrics == nil {
 		meta.Metrics = make(map[string]float64)
+	}
+
+	if data.Turns != nil {
+		meta.Turns = data.Turns
+	}
+	if data.ToolCounts != nil {
+		meta.ToolCounts = data.ToolCounts
 	}
 
 	var warnings []LiftWarning

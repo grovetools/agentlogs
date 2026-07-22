@@ -324,9 +324,8 @@ func groupByComponent(arms []armView, component string) byConfigReport {
 // else. Never Cost — the fork runner owns that axis — never Process as an axis,
 // never Outcome (grading is eval's, and eval never executes).
 //
-// ⚠ ComponentMetrics is expected to be EMPTY in this phase and that is valid: a
-// partial with no metric keys still carries an envelope and still joins. Do not
-// add placeholder zeros to make it non-empty.
+// ComponentMetrics may contain knowledge.tool_result_bytes. A partial with no
+// metric keys still carries an envelope and joins; never add placeholder zeros.
 func writeArmPartials(dir string, arms []armView) (int, []string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return 0, nil, fmt.Errorf("creating partials dir: %w", err)
@@ -497,6 +496,8 @@ type armSummary struct {
 	EstimatedUSD     float64 `json:"estimated_usd"`
 
 	ComponentMetrics map[string]float64 `json:"component_metrics,omitempty"`
+	Turns            *int               `json:"turns,omitempty"`
+	ToolCounts       map[string]int     `json:"tool_counts,omitempty"`
 	Warnings         []string           `json:"warnings,omitempty"`
 }
 
@@ -518,6 +519,8 @@ func armSummaries(arms []armView) []armSummary {
 			CacheWriteTokens: arm.Meta.Cost.CacheWriteTokens,
 			EstimatedUSD:     arm.Meta.Cost.EstimatedUSD,
 			ComponentMetrics: arm.Meta.Metrics,
+			Turns:            arm.Meta.Turns,
+			ToolCounts:       arm.Meta.ToolCounts,
 		}
 		if arm.Meta.Attributed() {
 			s.ConfigHash = arm.Meta.Config.Hash()

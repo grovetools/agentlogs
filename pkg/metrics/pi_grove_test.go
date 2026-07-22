@@ -224,10 +224,8 @@ func TestLiftGroveEntriesReplicateNilWhenUnstamped(t *testing.T) {
 //
 // This is reachable in production today, not hypothetical: the emitter appends
 // one grove_metric per agent_end (metrics.ts), so any multi-turn session carries
-// several on one branch. It is harmless only because that payload currently
-// stamps {turns, tool_counts} and no `metrics` key, so the merge has nothing to
-// lose yet. It becomes silent data loss the moment a real component metric is
-// emitted, which is why it is pinned now rather than then.
+// several on one branch. The payload now includes knowledge-tool result bytes,
+// so preserving values across entries is an active production requirement.
 //
 // The row this pins that no other fixture supplies: TWO grove_metric entries on
 // one path, each carrying a DIFFERENT valid D8 key. Every other fixture stamps
@@ -236,6 +234,22 @@ func TestLiftGroveEntriesReplicateNilWhenUnstamped(t *testing.T) {
 //
 // Mandatory mutation: `meta.Metrics = make(map[string]float64)` unconditionally
 // (drop the nil check) -> this must FAIL.
+func TestLiftGroveEntriesKnowledgeMetricAndDiagnostics(t *testing.T) {
+	_, meta, warnings := liftFixture(t, "grove_knowledge_metric")
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %v", warnings)
+	}
+	if got := meta.Metrics["knowledge.tool_result_bytes"]; got != 17 {
+		t.Fatalf("knowledge.tool_result_bytes = %v, want 17", got)
+	}
+	if meta.Turns == nil || *meta.Turns != 2 {
+		t.Fatalf("Turns = %v, want 2", meta.Turns)
+	}
+	if meta.ToolCounts["grove_memory"] != 2 || meta.ToolCounts["read"] != 3 {
+		t.Fatalf("ToolCounts = %v", meta.ToolCounts)
+	}
+}
+
 func TestLiftGroveEntriesAccumulatesAcrossMetricEntries(t *testing.T) {
 	_, meta, warnings := liftFixture(t, "grove_two_metric_entries")
 
@@ -614,10 +628,12 @@ func TestEmittedFixtureRoundTripsThroughTheLifter(t *testing.T) {
 		t.Errorf("emitted grove_metric still carries %s; it was deleted because it "+
 			"could never fire and had no denominator", MetricContextOffBundleReads)
 	}
-	// turns/tool_counts are diagnostics and must NOT arrive as D8 metric keys.
-	if len(meta.Metrics) != 0 {
-		t.Errorf("Metrics = %v, want empty — turns/tool_counts are diagnostics, "+
-			"not ComponentMetrics axes", meta.Metrics)
+	// Result bytes are the one component metric emitted beside diagnostics.
+	if got := meta.Metrics["knowledge.tool_result_bytes"]; got != 17 {
+		t.Errorf("knowledge.tool_result_bytes = %v, want 17", got)
+	}
+	if meta.Turns == nil || *meta.Turns != 1 || meta.ToolCounts["grove_context"] != 1 {
+		t.Errorf("diagnostics did not lift: turns=%v tool_counts=%v", meta.Turns, meta.ToolCounts)
 	}
 
 	_ = tree

@@ -30,13 +30,8 @@ const (
 // than inheriting them as already-passing: a guard that has never gated a
 // production caller has never been proven load-bearing on one.
 //
-// 🛑 IT RETURNS nil WHENEVER THERE IS NO BUNDLE MANIFEST, AND THAT IS THE
-// EXPECTED CASE TODAY.
-//
-// The metric's denominator is the seed manifest's bundle file list. Nothing
-// writes that manifest: no `grove-config.json` producer exists anywhere in the
-// ecosystem, and P6 deliberately does not add one. So in practice bundle is
-// always nil here and this always returns nil.
+// 🛑 IT RETURNS nil WHENEVER THERE IS NO BUNDLE MANIFEST. Flow now seeds a
+// per-run manifest for new Pi jobs, while old/non-flow sessions remain nil.
 //
 // nil means NOT MEASURED (D4). Returning 0 instead would assert "no off-bundle
 // reads occurred" — a claim about the world that nothing measured. That precise
@@ -104,19 +99,16 @@ func normalizeBundlePath(p, cwd string) string {
 // the mutations its tests declare (see pi_grove_test.go) instead of treating a
 // green suite as evidence they still bite.
 //
-// ⚠ THIS MAP IS EXPECTED TO COME BACK EMPTY IN THIS PHASE, and an empty map is a
-// valid result — the partial that carries it still has an envelope and still
-// joins. Two metrics were specified for wave one and NEITHER can ship:
+// An empty map remains valid. knowledge.tool_result_bytes can arrive from the
+// emitter; context.off_bundle_reads is measurable for newly seeded sessions but
+// this fold is still intentionally unwired until cwd/path attribution is proven.
+// skills.load_order_violations has no verified input at all: nothing in the
 //
-//   - context.off_bundle_reads has no producer for its denominator (no
-//     grove-config.json writer exists, and P6 does not add one), so it is
-//     not-measured and its key is ABSENT.
-//   - skills.load_order_violations has no verified input at all: nothing in the
-//     ecosystem declares a skill load ordering that a fold could check against.
-//     Skill frontmatter carries only name/domain/description. Rather than invent
-//     an ordering rule so the metric has something to compute — a fabricated
-//     denominator is worse than a missing metric — it is DEFERRED and emits
-//     nothing.
+//	ecosystem declares a skill load ordering that a fold could check against.
+//	Skill frontmatter carries only name/domain/description. Rather than invent
+//	an ordering rule so the metric has something to compute — a fabricated
+//	denominator is worse than a missing metric — it is DEFERRED and emits
+//	nothing.
 //
 // Lifted grove_metric values from the transcript ARE included when present: those
 // were measured by the emitter, whatever this build can compute post-hoc.
