@@ -33,7 +33,13 @@ func PiSessionDirName(workDir string) string {
 // pi honors a PI_CODING_AGENT_DIR env override of ~/.pi/agent; grove assumes
 // the default location, like it does for ~/.claude and ~/.codex.)
 func PiSessionsDir(homeDir, workDir string) string {
-	return filepath.Join(homeDir, ".pi", "agent", "sessions", PiSessionDirName(workDir))
+	return PiSessionsDirForConfig(homeDir, ".pi", workDir)
+}
+
+// PiSessionsDirForConfig returns the session root for one Pi-family product.
+// Rebranded runtimes retain Pi's layout under their own config directory.
+func PiSessionsDirForConfig(homeDir, configDirName, workDir string) string {
+	return filepath.Join(homeDir, configDirName, "agent", "sessions", PiSessionDirName(workDir))
 }
 
 // IsPiSessionPath reports whether a filesystem path looks like a pi session
@@ -56,7 +62,8 @@ func PiSessionsDir(homeDir, workDir string) string {
 // ~/.pi/agent/sessions/. Matching it silently resolved every pi transcript as
 // claude.
 func IsPiSessionPath(path string) bool {
-	if strings.Contains(filepath.ToSlash(path), "/.pi/") {
+	slashed := filepath.ToSlash(path)
+	if strings.Contains(slashed, "/.pi/") || strings.Contains(slashed, "/.grove-agent/") {
 		return true
 	}
 	if strings.ToLower(filepath.Ext(path)) != ".jsonl" {
@@ -82,9 +89,15 @@ const PiSessionsDirName = "sessions"
 // (pkg/agentstream), scanning (internal/session), and transcript path lookup
 // (GetTranscriptPath) all share it.
 func PiSessionsGlob(homeDir, sessionID string) string {
+	return PiSessionsGlobForConfig(homeDir, ".pi", sessionID)
+}
+
+// PiSessionsGlobForConfig keeps stock Pi and rebranded product stores
+// independently discoverable.
+func PiSessionsGlobForConfig(homeDir, configDirName, sessionID string) string {
 	name := "*.jsonl"
 	if sessionID != "" {
 		name = "*" + sessionID + "*.jsonl"
 	}
-	return filepath.Join(homeDir, ".pi", "agent", "sessions", "*", name)
+	return filepath.Join(homeDir, configDirName, "agent", "sessions", "*", name)
 }
