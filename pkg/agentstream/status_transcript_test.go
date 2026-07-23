@@ -7,9 +7,11 @@ import (
 	"time"
 )
 
-const piToolCallLine = `{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-07-01T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Running it."},{"type":"toolCall","id":"tc-9","name":"bash","arguments":{"command":"make build"}}]}}`
-const piToolResultLine = `{"type":"message","id":"m3","parentId":"m2","timestamp":"2026-07-01T10:00:03.000Z","message":{"role":"toolResult","toolCallId":"tc-9","toolName":"bash","content":[{"type":"text","text":"ok"}],"isError":false}}`
-const piUserLine = `{"type":"message","id":"m1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","message":{"role":"user","content":"build it"}}`
+const (
+	piToolCallLine   = `{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-07-01T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Running it."},{"type":"toolCall","id":"tc-9","name":"bash","arguments":{"command":"make build"}}]}}`
+	piToolResultLine = `{"type":"message","id":"m3","parentId":"m2","timestamp":"2026-07-01T10:00:03.000Z","message":{"role":"toolResult","toolCallId":"tc-9","toolName":"bash","content":[{"type":"text","text":"ok"}],"isError":false}}`
+	piUserLine       = `{"type":"message","id":"m1","parentId":null,"timestamp":"2026-07-01T10:00:01.000Z","message":{"role":"user","content":"build it"}}`
+)
 
 func writeTranscript(t *testing.T, lines ...string) string {
 	t.Helper()
