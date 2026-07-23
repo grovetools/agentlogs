@@ -170,6 +170,22 @@ func TestDiscoverTranscript_PiMungedCwdLayout(t *testing.T) {
 	}
 }
 
+func TestDiscoverTranscript_PiExplicitSessionDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "2026-07-01T10-00-00-000Z_bbbbbbbb-1111-7222-3333-444444444444.jsonl")
+	header := `{"type":"session","version":3,"id":"bbbbbbbb-1111-7222-3333-444444444444","timestamp":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","cwd":"/guest/worktree"}` + "\n"
+	if err := os.WriteFile(path, []byte(header), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DiscoverTranscript(DiscoverOptions{Provider: "pi", WorkDir: "/unrelated", SessionDir: dir})
+	if err != nil {
+		t.Fatalf("DiscoverTranscript: %v", err)
+	}
+	if got != path {
+		t.Fatalf("got %q, want explicit session path %q", got, path)
+	}
+}
+
 func TestDiscoverTranscript_OpencodeNotImplemented(t *testing.T) {
 	_, err := DiscoverTranscript(DiscoverOptions{Provider: "opencode", WorkDir: "/tmp"})
 	if err == nil {

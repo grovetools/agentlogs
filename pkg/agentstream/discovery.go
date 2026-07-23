@@ -15,9 +15,10 @@ import (
 
 // DiscoverOptions configures transcript discovery.
 type DiscoverOptions struct {
-	Provider  string    // "claude", "codex", "pi", "opencode"
-	WorkDir   string    // Working directory to match
-	AfterTime time.Time // Only transcripts modified after this time
+	Provider   string    // "claude", "codex", "pi", "opencode"
+	WorkDir    string    // Working directory to match
+	AfterTime  time.Time // Only transcripts modified after this time
+	SessionDir string    // Explicit provider session dir (pi); bypasses HOME/cwd derivation
 }
 
 // ErrUnsupportedProvider indicates the provider has no file-based transcript
@@ -157,7 +158,10 @@ func discoverPiTranscript(opts DiscoverOptions) (string, error) {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
 
-	piSessionsDir := transcript.PiSessionsDir(homeDir, opts.WorkDir)
+	piSessionsDir := opts.SessionDir
+	if piSessionsDir == "" {
+		piSessionsDir = transcript.PiSessionsDir(homeDir, opts.WorkDir)
+	}
 
 	if _, err := os.Stat(piSessionsDir); os.IsNotExist(err) {
 		return "", fmt.Errorf("pi sessions directory not found: %s", piSessionsDir)
