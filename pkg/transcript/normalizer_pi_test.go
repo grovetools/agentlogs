@@ -39,6 +39,14 @@ func TestPiSessionsGlob(t *testing.T) {
 	if gotID != wantID {
 		t.Errorf("PiSessionsGlob(id) = %q, want %q", gotID, wantID)
 	}
+	product := PiSessionsGlobForConfig("/home/u", ".grove-agent", "abc")
+	wantProduct := filepath.Join("/home/u", ".grove-agent", "agent", "sessions", "*", "*abc*.jsonl")
+	if product != wantProduct {
+		t.Errorf("grove-agent glob = %q, want %q", product, wantProduct)
+	}
+	if !IsPiSessionPath(filepath.Join("/home/u", ".grove-agent", "agent", "sessions", "--work--", "x.jsonl")) {
+		t.Error("rebranded Pi transcript should retain Pi format detection")
+	}
 }
 
 func TestPiNormalizer_NormalizeLine_UserStringContent(t *testing.T) {
