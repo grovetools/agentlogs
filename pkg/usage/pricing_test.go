@@ -28,9 +28,9 @@ func opusPricing(t *testing.T) Pricing {
 func TestFindFuzzyMatch(t *testing.T) {
 	pm := DefaultPricing()
 	cases := []struct {
-		model       string
-		wantInputM  float64 // expected input rate per million
-		wantFound   bool
+		model      string
+		wantInputM float64 // expected input rate per million
+		wantFound  bool
 	}{
 		{"claude-opus-4-5-20251101", 5, true},
 		{"claude-opus-4-8", 5, true},

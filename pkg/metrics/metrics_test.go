@@ -316,8 +316,10 @@ func TestResultJSONOmitsUnmeasuredCounts(t *testing.T) {
 func TestComputeProviderIgnoresSidechainEntries(t *testing.T) {
 	entries := []transcript.UnifiedEntry{
 		// A subagent running a different provider, ahead of any main-chain entry.
-		{Role: "assistant", Provider: "pi", IsSidechain: true, AgentID: "sub-1",
-			Parts: []transcript.UnifiedPart{textPart("subagent work")}},
+		{
+			Role: "assistant", Provider: "pi", IsSidechain: true, AgentID: "sub-1",
+			Parts: []transcript.UnifiedPart{textPart("subagent work")},
+		},
 		{Role: "user", Provider: "claude", Parts: []transcript.UnifiedPart{textPart("main turn")}},
 	}
 
@@ -337,13 +339,17 @@ func TestComputeExcludesSidechainEntries(t *testing.T) {
 			toolPart("Read", map[string]interface{}{"file_path": "/repo/main.go"}),
 		}},
 		// Everything below is subagent work and must not be counted.
-		{Role: "user", Provider: "claude", IsSidechain: true, AgentID: "sub-1",
-			Parts: []transcript.UnifiedPart{textPart("sidechain turn")}},
-		{Role: "assistant", Provider: "claude", IsSidechain: true, AgentID: "sub-1",
+		{
+			Role: "user", Provider: "claude", IsSidechain: true, AgentID: "sub-1",
+			Parts: []transcript.UnifiedPart{textPart("sidechain turn")},
+		},
+		{
+			Role: "assistant", Provider: "claude", IsSidechain: true, AgentID: "sub-1",
 			Parts: []transcript.UnifiedPart{
 				toolPart("Grep", map[string]interface{}{"path": "/repo/sub"}),
 				toolPart("Write", map[string]interface{}{"file_path": "/repo/sub.go"}),
-			}},
+			},
+		},
 	}
 
 	got := Compute(entries)
@@ -497,14 +503,18 @@ func TestComputeEmptyTranscript(t *testing.T) {
 // after any JSON round-trip. Both shapes must fold identically.
 func TestComputeHandlesJSONRoundTrippedContent(t *testing.T) {
 	entries := []transcript.UnifiedEntry{
-		{Role: "user", Provider: "claude", Timestamp: time.Unix(100, 0),
-			Parts: []transcript.UnifiedPart{textPart("do it")}},
-		{Role: "assistant", Provider: "claude", Timestamp: time.Unix(160, 0),
+		{
+			Role: "user", Provider: "claude", Timestamp: time.Unix(100, 0),
+			Parts: []transcript.UnifiedPart{textPart("do it")},
+		},
+		{
+			Role: "assistant", Provider: "claude", Timestamp: time.Unix(160, 0),
 			Tokens: &transcript.UnifiedTokens{Input: 10, Output: 5, CacheWrite: 2},
 			Parts: []transcript.UnifiedPart{
 				toolPart("Read", map[string]interface{}{"file_path": "/repo/a.go"}),
 				toolPart("Write", map[string]interface{}{"file_path": "/repo/b.go"}),
-			}},
+			},
+		},
 	}
 
 	typed := Compute(entries)
@@ -548,15 +558,21 @@ func TestComputeHandlesJSONRoundTrippedContent(t *testing.T) {
 
 func TestComputeDiagnostics(t *testing.T) {
 	entries := []transcript.UnifiedEntry{
-		{Role: "user", Provider: "claude", Timestamp: time.Unix(1000, 0),
-			Parts: []transcript.UnifiedPart{textPart("hi")}},
+		{
+			Role: "user", Provider: "claude", Timestamp: time.Unix(1000, 0),
+			Parts: []transcript.UnifiedPart{textPart("hi")},
+		},
 		// A zero timestamp must not drag the window to the epoch.
-		{Role: "assistant", Provider: "claude", Timestamp: time.Time{},
-			Tokens: &transcript.UnifiedTokens{Input: 1, Output: 1}},
-		{Role: "assistant", Provider: "claude", Timestamp: time.Unix(1090, 0),
+		{
+			Role: "assistant", Provider: "claude", Timestamp: time.Time{},
+			Tokens: &transcript.UnifiedTokens{Input: 1, Output: 1},
+		},
+		{
+			Role: "assistant", Provider: "claude", Timestamp: time.Unix(1090, 0),
 			Tokens: &transcript.UnifiedTokens{
 				Input: 100, Output: 20, Reasoning: 5, CacheRead: 7, CacheWrite: 3, Cost: 0.25,
-			}},
+			},
+		},
 	}
 
 	got := Compute(entries)
@@ -577,8 +593,10 @@ func TestComputeDiagnostics(t *testing.T) {
 // map wall clock or tokens onto a scored axis such as record.Cost.
 func TestDiagnosticsAreQuarantinedUnderSubObject(t *testing.T) {
 	got := Compute([]transcript.UnifiedEntry{
-		{Role: "assistant", Provider: "claude", Timestamp: time.Unix(1, 0),
-			Tokens: &transcript.UnifiedTokens{Input: 5, Cost: 1.5}},
+		{
+			Role: "assistant", Provider: "claude", Timestamp: time.Unix(1, 0),
+			Tokens: &transcript.UnifiedTokens{Input: 5, Cost: 1.5},
+		},
 	})
 
 	data, err := json.Marshal(got)
