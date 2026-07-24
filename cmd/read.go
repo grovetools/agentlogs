@@ -45,11 +45,6 @@ func newReadCmd() *cobra.Command {
 			// files that happen to exist in the cwd.
 			if isLogFilePath(spec) {
 				// Construct minimal SessionInfo from the file path
-				prov := "claude"
-				if strings.Contains(spec, "/.codex/") {
-					prov = "codex"
-				}
-
 				// Extract session ID and project name from path if possible
 				sessionID := "unknown"
 				projectName := "unknown"
@@ -68,7 +63,7 @@ func newReadCmd() *cobra.Command {
 
 				sessionInfo = &session.SessionInfo{
 					LogFilePath: spec,
-					Provider:    prov,
+					Provider:    providerForLogPath(spec),
 					SessionID:   sessionID,
 					ProjectName: projectName,
 					Jobs:        []session.JobInfo{},

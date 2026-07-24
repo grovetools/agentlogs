@@ -36,6 +36,19 @@ func isLogFilePath(spec string) bool {
 	return false
 }
 
+// providerForLogPath infers the provider for direct transcript paths. Keep this
+// aligned with the filesystem-backed providers supported by the session scanner.
+func providerForLogPath(path string) string {
+	switch {
+	case strings.Contains(path, "/.codex/"), strings.Contains(path, "/codex/sessions/"):
+		return "codex"
+	case strings.Contains(path, "/.pi/"), strings.Contains(path, "/pi/agent/sessions/"):
+		return "pi"
+	default:
+		return "claude"
+	}
+}
+
 var ulogStream = grovelogging.NewUnifiedLogger("grove-agent-logs.cmd.stream")
 
 func newStreamCmd() *cobra.Command {
@@ -57,13 +70,9 @@ func newStreamCmd() *cobra.Command {
 			// os.Stat if the cwd is the plans directory, so we require the path
 			// to look like a log file (absolute path, or .jsonl/.log extension).
 			if isLogFilePath(spec) {
-				prov := "claude"
-				if strings.Contains(spec, "/.codex/") {
-					prov = "codex"
-				}
 				sessionInfo = &session.SessionInfo{
 					LogFilePath: spec,
-					Provider:    prov,
+					Provider:    providerForLogPath(spec),
 				}
 			} else {
 				// Slow path: resolve session from spec with retries for newly started jobs
