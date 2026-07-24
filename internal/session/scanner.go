@@ -270,8 +270,11 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 
 	var sessions []SessionInfo
 	// Track which registry sessions we've already added to avoid duplicates
-	// (multiple .jsonl files like agent sidechains can have the same sessionID)
+	// (multiple .jsonl files like agent sidechains can have the same sessionID).
+	// Also retain flow's job-session IDs so the daemon copy of the same session
+	// is not appended later as a pathless duplicate.
 	processedRegistrySessions := make(map[string]bool)
+	registryJobSessionIDs := make(map[string]bool)
 
 	for _, logPath := range matches {
 		var sessionID, cwd string
@@ -305,6 +308,9 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 				continue
 			}
 			processedRegistrySessions[sessionID] = true
+			if metadata.SessionID != "" {
+				registryJobSessionIDs[metadata.SessionID] = true
+			}
 			logger.WithFields(map[string]interface{}{
 				"session_id":    sessionID,
 				"plan_name":     metadata.PlanName,
@@ -404,7 +410,29 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		})
 	}
 
-	// 5. Add all remaining archived sessions.
+	// 5. Materialize registry sessions whose transcripts live outside the
+	// providers' standard storage roots. This is common for interactive Pi
+	// sessions: flow archives the native transcript under the job's artifacts
+	// directory and records that exact path in metadata. Such a transcript will
+	// never appear in the ~/.pi glob above, but it is still authoritative and
+	// readable.
+	for nativeID, metadata := range registry {
+		if processedRegistrySessions[nativeID] || metadata.Provider == "opencode" {
+			continue
+		}
+		registrySession, ok := s.sessionFromRegistryMetadata(nativeID, metadata)
+		if !ok {
+			continue
+		}
+		sessions = append(sessions, registrySession)
+		processedRegistrySessions[nativeID] = true
+		if metadata.SessionID != "" {
+			registryJobSessionIDs[metadata.SessionID] = true
+		}
+		delete(archivedSessionIDs, registrySession.SessionID)
+	}
+
+	// 6. Add all remaining archived sessions.
 	// We've already filtered out any that were found in the live registry.
 	for _, archivedSession := range archivedSessions {
 		if _, exists := archivedSessionIDs[archivedSession.SessionID]; exists {
@@ -412,7 +440,7 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		}
 	}
 
-	// 6. Scan for OpenCode sessions.
+	// 7. Scan for OpenCode sessions.
 	opencodeSessions, err := s.scanOpenCodeSessions()
 	if err != nil {
 		logger.WithError(err).Warn("Could not scan for OpenCode sessions, proceeding without them")
@@ -421,19 +449,68 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		logger.WithField("opencode_count", len(opencodeSessions)).Debug("Added OpenCode sessions")
 	}
 
-	// 7. Add daemon sessions that weren't already found via filesystem scanning.
+	// 8. Add daemon sessions that weren't already found via filesystem scanning.
 	// These are sessions that the daemon knows about but don't have filesystem entries yet.
 	existingSessionIDs := make(map[string]bool)
 	for _, s := range sessions {
 		existingSessionIDs[s.SessionID] = true
 	}
 	for _, ds := range daemonSessions {
-		if !existingSessionIDs[ds.SessionID] {
+		if !existingSessionIDs[ds.SessionID] && !registryJobSessionIDs[ds.SessionID] {
 			sessions = append(sessions, ds)
 		}
 	}
 
 	return sessions, nil
+}
+
+// sessionFromRegistryMetadata converts a hooks registry record into a readable
+// session when its transcript was not found under a provider's standard storage
+// root. The boolean is false for stale or incomplete records.
+func (s *Scanner) sessionFromRegistryMetadata(nativeID string, metadata sessions.SessionMetadata) (SessionInfo, bool) {
+	if metadata.TranscriptPath == "" {
+		return SessionInfo{}, false
+	}
+	stat, err := os.Stat(metadata.TranscriptPath)
+	if err != nil || stat.IsDir() {
+		return SessionInfo{}, false
+	}
+
+	sessionID := metadata.ClaudeSessionID
+	if sessionID == "" {
+		sessionID = nativeID
+	}
+	if sessionID == "" {
+		sessionID = metadata.SessionID
+	}
+
+	jobs := []JobInfo{}
+	if metadata.PlanName != "" && metadata.JobFilePath != "" {
+		jobs = append(jobs, JobInfo{
+			Plan: metadata.PlanName,
+			Job:  filepath.Base(metadata.JobFilePath),
+		})
+	}
+
+	projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
+	provider := metadata.Provider
+	if provider == "" {
+		provider = providerFromTranscriptPath(metadata.TranscriptPath)
+	}
+
+	return SessionInfo{
+		SessionID:   sessionID,
+		ProjectName: projectName,
+		ProjectPath: projectPath,
+		Worktree:    worktree,
+		Ecosystem:   ecosystem,
+		Jobs:        jobs,
+		LogFilePath: metadata.TranscriptPath,
+		StartedAt:   metadata.StartedAt,
+		Provider:    provider,
+		Status:      metadata.Status,
+		PID:         metadata.PID,
+	}, true
 }
 
 // providerFromTranscriptPath infers a provider name from where a transcript
@@ -858,68 +935,109 @@ func (s *Scanner) scanForArchivedSessions() ([]SessionInfo, error) {
 		return nil, fmt.Errorf("failed to scan for plans: %w", err)
 	}
 
-	// 2. For each plan directory, search for archived sessions.
+	// 2. Scan each plan root. ScanForAllPlans returns the directory containing
+	// plan directories (for example, .../plans), not each individual plan.
+	// Also scan the root itself for compatibility with callers/configurations
+	// that point directly at one plan directory.
 	for _, scannedDir := range scannedDirs {
-		artifactsDir := filepath.Join(scannedDir.Path, ".artifacts")
-		jobDirs, err := os.ReadDir(artifactsDir)
-		if err != nil {
+		archivedSessions = append(archivedSessions, s.scanArchivedSessionsInPlansDir(scannedDir.Path)...)
+	}
+	return archivedSessions, nil
+}
+
+// scanArchivedSessionsInPlansDir scans a plans root plus the plan directories
+// immediately beneath it. The root scan preserves compatibility when the
+// supplied path is already an individual plan directory.
+func (s *Scanner) scanArchivedSessionsInPlansDir(plansDir string) []SessionInfo {
+	planDirs := []string{plansDir}
+	entries, err := os.ReadDir(plansDir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() && entry.Name() != ".artifacts" {
+				planDirs = append(planDirs, filepath.Join(plansDir, entry.Name()))
+			}
+		}
+	}
+
+	var archivedSessions []SessionInfo
+	for _, planDir := range planDirs {
+		archivedSessions = append(archivedSessions, s.scanArchivedSessionsInPlanDir(planDir)...)
+	}
+	return archivedSessions
+}
+
+// scanArchivedSessionsInPlanDir reads archived job sessions from one plan's
+// .artifacts directory. Keeping this filesystem-only portion separate makes
+// the archive layout independently testable from workspace discovery.
+func (s *Scanner) scanArchivedSessionsInPlanDir(planDir string) []SessionInfo {
+	artifactsDir := filepath.Join(planDir, ".artifacts")
+	jobDirs, err := os.ReadDir(artifactsDir)
+	if err != nil {
+		return nil
+	}
+
+	var archivedSessions []SessionInfo
+	for _, jobEntry := range jobDirs {
+		if !jobEntry.IsDir() {
 			continue
 		}
 
-		for _, jobEntry := range jobDirs {
-			if !jobEntry.IsDir() {
+		jobArtifactsDir := filepath.Join(artifactsDir, jobEntry.Name())
+		data, err := os.ReadFile(filepath.Join(jobArtifactsDir, "metadata.json"))
+		if err != nil {
+			continue
+		}
+		var metadata sessions.SessionMetadata
+		if err := json.Unmarshal(data, &metadata); err != nil {
+			continue
+		}
+
+		transcriptPath := filepath.Join(jobArtifactsDir, "transcript.jsonl")
+		if _, err := os.Stat(transcriptPath); err != nil {
+			// Some archives only retain the provider transcript named by the
+			// metadata. Do not advertise an unreadable transcript when neither
+			// representation exists.
+			if metadata.TranscriptPath == "" {
 				continue
 			}
-
-			metadataPath := filepath.Join(artifactsDir, jobEntry.Name(), "metadata.json")
-			if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+			if _, err := os.Stat(metadata.TranscriptPath); err != nil {
 				continue
 			}
+			transcriptPath = metadata.TranscriptPath
+		}
 
-			// 3. Parse metadata and construct SessionInfo.
-			data, err := os.ReadFile(metadataPath)
-			if err != nil {
-				continue
-			}
-			var metadata sessions.SessionMetadata
-			if err := json.Unmarshal(data, &metadata); err != nil {
-				continue
-			}
-
-			transcriptPath := filepath.Join(artifactsDir, jobEntry.Name(), "transcript.jsonl")
-
-			// Construct a JobInfo from the metadata
-			jobInfo := []JobInfo{}
-			if metadata.PlanName != "" && metadata.JobFilePath != "" {
-				jobInfo = append(jobInfo, JobInfo{
-					Plan:      metadata.PlanName,
-					Job:       filepath.Base(metadata.JobFilePath),
-					LineIndex: 0, // Not relevant for archived sessions
-				})
-			}
-
-			projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
-
-			// Determine provider - archived sessions are typically Claude (the primary use case)
-			provider := metadata.Provider
-			if provider == "" {
-				provider = "claude"
-			}
-
-			archivedSessions = append(archivedSessions, SessionInfo{
-				SessionID:   metadata.ClaudeSessionID, // Use the native agent ID
-				ProjectName: projectName,
-				ProjectPath: projectPath,
-				Worktree:    worktree,
-				Ecosystem:   ecosystem,
-				Jobs:        jobInfo,
-				LogFilePath: transcriptPath, // Point to the archived transcript
-				StartedAt:   metadata.StartedAt,
-				Provider:    provider,
+		jobInfo := []JobInfo{}
+		if metadata.PlanName != "" && metadata.JobFilePath != "" {
+			jobInfo = append(jobInfo, JobInfo{
+				Plan:      metadata.PlanName,
+				Job:       filepath.Base(metadata.JobFilePath),
+				LineIndex: 0,
 			})
 		}
+
+		projectPath, projectName, worktree, ecosystem := s.parseProjectPath(metadata.WorkingDirectory)
+		provider := metadata.Provider
+		if provider == "" {
+			provider = "claude"
+		}
+		nativeSessionID := metadata.ClaudeSessionID
+		if nativeSessionID == "" {
+			nativeSessionID = metadata.SessionID
+		}
+
+		archivedSessions = append(archivedSessions, SessionInfo{
+			SessionID:   nativeSessionID,
+			ProjectName: projectName,
+			ProjectPath: projectPath,
+			Worktree:    worktree,
+			Ecosystem:   ecosystem,
+			Jobs:        jobInfo,
+			LogFilePath: transcriptPath,
+			StartedAt:   metadata.StartedAt,
+			Provider:    provider,
+		})
 	}
-	return archivedSessions, nil
+	return archivedSessions
 }
 
 // scanOpenCodeSessions scans for OpenCode sessions in ~/.local/share/opencode/storage/
