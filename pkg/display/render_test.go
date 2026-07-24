@@ -157,6 +157,64 @@ func TestMarkdownCapBehavior(t *testing.T) {
 	}
 }
 
+func TestTerminalDetailLevelControlsToolResultExpansion(t *testing.T) {
+	output := "line 1\nline 2\nline 3\nline 4\nline 5\nline 6"
+	for _, role := range []string{"assistant", "user"} {
+		t.Run(role, func(t *testing.T) {
+			entry := transcript.UnifiedEntry{
+				Role: role,
+				Parts: []transcript.UnifiedPart{{
+					Type: "tool_result",
+					Content: transcript.UnifiedToolResult{
+						ToolCallID: "t1",
+						Output:     output,
+					},
+				}},
+			}
+
+			var full bytes.Buffer
+			if err := RenderUnifiedEntry(&full, entry, RenderOptions{Style: StyleTerminal, DetailLevel: "full"}, DefaultToolFormatters()); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(full.String(), "line 1") || !strings.Contains(full.String(), "line 6") {
+				t.Errorf("full detail omitted tool output:\n%s", full.String())
+			}
+			if strings.Contains(full.String(), "(6 lines)") {
+				t.Errorf("full detail unexpectedly collapsed tool output:\n%s", full.String())
+			}
+
+			var summary bytes.Buffer
+			if err := RenderUnifiedEntry(&summary, entry, RenderOptions{Style: StyleTerminal, DetailLevel: "summary"}, DefaultToolFormatters()); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(summary.String(), "(6 lines)") || strings.Contains(summary.String(), "line 6") {
+				t.Errorf("summary detail did not collapse tool output:\n%s", summary.String())
+			}
+		})
+	}
+}
+
+func TestTerminalFullDetailExpandsEmbeddedToolOutput(t *testing.T) {
+	entry := transcript.UnifiedEntry{
+		Role: "assistant",
+		Parts: []transcript.UnifiedPart{{
+			Type: "tool_call",
+			Content: transcript.UnifiedToolCall{
+				Name:   "read",
+				Input:  map[string]interface{}{"file_path": "/tmp/file"},
+				Output: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6",
+			},
+		}},
+	}
+	var full bytes.Buffer
+	if err := RenderUnifiedEntry(&full, entry, RenderOptions{Style: StyleTerminal, DetailLevel: "full"}, DefaultToolFormatters()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(full.String(), "line 6") || strings.Contains(full.String(), "(6 lines read)") {
+		t.Errorf("full detail collapsed embedded tool output:\n%s", full.String())
+	}
+}
+
 // TestTerminalStyleRegression verifies the writer-based terminal renderer
 // produces the same bytes as DisplayUnifiedEntry (stdout wrapper) and
 // FormatUnifiedEntry.

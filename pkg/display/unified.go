@@ -62,9 +62,12 @@ func getStringField(m map[string]interface{}, key string) string {
 
 // formatToolOutput formats tool output, with special handling for read-like tools.
 // Returns a simple string without leading/trailing whitespace - caller handles indentation.
-func formatToolOutput(toolName, output string, mutedStyle lipgloss.Style) string {
+func formatToolOutput(toolName, output, detailLevel string, mutedStyle lipgloss.Style) string {
 	if output == "" {
 		return ""
+	}
+	if detailLevel == "full" {
+		return fmt.Sprintf("Output: %s", strings.TrimSpace(output))
 	}
 
 	// For read tools, show a summary instead of full content

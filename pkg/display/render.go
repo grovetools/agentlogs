@@ -144,27 +144,13 @@ func renderTerminalEntry(
 					}
 				}
 			case "tool_result":
-				// Show tool results with tree connector (these belong to previous tool call)
+				// Show tool results with tree connector (these belong to previous tool call).
+				// Full detail must preserve the complete output; summary mode retains
+				// the compact line-count representation.
 				output := partToolResultOutput(part)
 				if output != "" {
 					hasToolResults = true
-					// For long outputs (like file reads), show a summary
-					lines := strings.Split(strings.TrimSpace(output), "\n")
-					if len(lines) > 5 {
-						// Show compact summary
-						fmt.Fprintf(w, "  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
-					} else {
-						// Show short output directly
-						for i, line := range lines {
-							if strings.TrimSpace(line) != "" {
-								if i == 0 {
-									fmt.Fprintf(w, "  %s  %s\n", tree, line)
-								} else {
-									fmt.Fprintf(w, "     %s\n", line)
-								}
-							}
-						}
-					}
+					writeTerminalToolResult(w, output, detailLevel, tree, mutedStyle)
 				}
 			}
 		}
@@ -198,7 +184,7 @@ func renderTerminalEntry(
 
 			// Show output with tree connector (for embedded output like OpenCode or merged Claude)
 			if toolCall.Output != "" {
-				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, mutedStyle)
+				outputDisplay := formatToolOutput(toolCall.Name, toolCall.Output, detailLevel, mutedStyle)
 				if outputDisplay != "" {
 					fmt.Fprintf(w, "  %s  %s\n", tree, mutedStyle.Render(outputDisplay))
 				}
@@ -224,31 +210,35 @@ func renderTerminalEntry(
 			}
 
 		case "tool_result":
-			// Tool results shown with tree connector (only first line gets ⎿)
+			// Tool results shown with tree connector (only first line gets ⎿).
 			output := partToolResultOutput(part)
 			if output != "" {
-				lines := strings.Split(strings.TrimSpace(output), "\n")
-				if len(lines) > 5 {
-					// Compact summary for long output
-					fmt.Fprintf(w, "  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
-				} else {
-					firstLine := true
-					for _, line := range lines {
-						if strings.TrimSpace(line) != "" {
-							if firstLine {
-								fmt.Fprintf(w, "  %s  %s\n", tree, line)
-								firstLine = false
-							} else {
-								fmt.Fprintf(w, "     %s\n", line)
-							}
-						}
-					}
-				}
+				writeTerminalToolResult(w, output, detailLevel, tree, mutedStyle)
 			}
 			fmt.Fprintln(w) // Blank line after tool result (even if empty)
 		}
 	}
 	return nil
+}
+
+// writeTerminalToolResult writes complete tool output in full detail and a
+// compact line count in summary detail. Blank lines are preserved in full mode.
+func writeTerminalToolResult(w io.Writer, output, detailLevel, tree string, mutedStyle lipgloss.Style) {
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if detailLevel != "full" && len(lines) > 5 {
+		fmt.Fprintf(w, "  %s  %s\n", tree, mutedStyle.Render(fmt.Sprintf("(%d lines)", len(lines))))
+		return
+	}
+
+	firstLine := true
+	for _, line := range lines {
+		if firstLine {
+			fmt.Fprintf(w, "  %s  %s\n", tree, line)
+			firstLine = false
+		} else {
+			fmt.Fprintf(w, "     %s\n", line)
+		}
+	}
 }
 
 // --- Markdown style ---
