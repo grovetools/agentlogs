@@ -37,6 +37,14 @@ func TestFindFuzzyMatch(t *testing.T) {
 		{"claude-haiku-4-5-20251001", 1, true},
 		{"claude-opus-4-1-20250805", 15, true}, // opus 4.1 is the older 15/M tier
 		{"definitely-not-a-real-model", 0, false},
+		// Claude 5 family — the strings Claude Code writes into transcripts,
+		// including the "[1m]" long-context marker it appends when the 1M
+		// variant is selected. Missing table entries made these summarize as
+		// "⚠ unpriced" instead of a cost.
+		{"claude-opus-5", 5, true},
+		{"claude-opus-5[1m]", 5, true},
+		{"claude-sonnet-5", 3, true},
+		{"claude-fable-5", 10, true},
 	}
 	for _, tc := range cases {
 		p, ok := pm.Find(tc.model)

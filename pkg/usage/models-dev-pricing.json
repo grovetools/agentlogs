@@ -821,6 +821,17 @@
 			"context": 1000000
 		}
 	},
+	"anthropic/claude-opus-5": {
+		"cost": {
+			"cache_read": 0.5,
+			"cache_write": 6.25,
+			"input": 5,
+			"output": 25
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
 	"anthropic/claude-opus-latest": {
 		"cost": {
 			"cache_read": 0.4998,
@@ -945,6 +956,17 @@
 		"cost": {
 			"input": 2.992,
 			"output": 14.993999999999998
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
+	"anthropic/claude-sonnet-5": {
+		"cost": {
+			"cache_read": 0.3,
+			"cache_write": 3.75,
+			"input": 3,
+			"output": 15
 		},
 		"limit": {
 			"context": 1000000
@@ -1695,6 +1717,17 @@
 			"context": 200000
 		}
 	},
+	"claude-opus-5": {
+		"cost": {
+			"cache_read": 0.5,
+			"cache_write": 6.25,
+			"input": 5,
+			"output": 25
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
 	"claude-opus4-5": {
 		"cost": {
 			"input": 5.98,
@@ -1930,6 +1963,17 @@
 			"context": 200000
 		}
 	},
+	"claude-sonnet-5": {
+		"cost": {
+			"cache_read": 0.3,
+			"cache_write": 3.75,
+			"input": 3,
+			"output": 15
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
 	"codex-mini-latest": {
 		"cost": {
 			"cache_read": 0.375,
@@ -2143,6 +2187,17 @@
 			"context": 1000000
 		}
 	},
+	"eu.anthropic.claude-opus-5": {
+		"cost": {
+			"cache_read": 0.55,
+			"cache_write": 6.875,
+			"input": 5.5,
+			"output": 27.5
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
 	"eu.anthropic.claude-sonnet-4-5-20250929-v1:0": {
 		"cost": {
 			"cache_read": 0.33,
@@ -2155,6 +2210,17 @@
 		}
 	},
 	"eu.anthropic.claude-sonnet-4-6": {
+		"cost": {
+			"cache_read": 0.33,
+			"cache_write": 4.125,
+			"input": 3.3,
+			"output": 16.5
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
+	"eu.anthropic.claude-sonnet-5": {
 		"cost": {
 			"cache_read": 0.33,
 			"cache_write": 4.125,
@@ -2301,6 +2367,17 @@
 			"context": 1000000
 		}
 	},
+	"global.anthropic.claude-opus-5": {
+		"cost": {
+			"cache_read": 0.5,
+			"cache_write": 6.25,
+			"input": 5,
+			"output": 25
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
 	"global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
 		"cost": {
 			"cache_read": 0.3,
@@ -2313,6 +2390,17 @@
 		}
 	},
 	"global.anthropic.claude-sonnet-4-6": {
+		"cost": {
+			"cache_read": 0.3,
+			"cache_write": 3.75,
+			"input": 3,
+			"output": 15
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
+	"global.anthropic.claude-sonnet-5": {
 		"cost": {
 			"cache_read": 0.3,
 			"cache_write": 3.75,
@@ -2980,6 +3068,17 @@
 			"context": 1000000
 		}
 	},
+	"us.anthropic.claude-opus-5": {
+		"cost": {
+			"cache_read": 0.5,
+			"cache_write": 6.25,
+			"input": 5,
+			"output": 25
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
 	"us.anthropic.claude-sonnet-4-5-20250929-v1:0": {
 		"cost": {
 			"cache_read": 0.3,
@@ -2992,6 +3091,17 @@
 		}
 	},
 	"us.anthropic.claude-sonnet-4-6": {
+		"cost": {
+			"cache_read": 0.3,
+			"cache_write": 3.75,
+			"input": 3,
+			"output": 15
+		},
+		"limit": {
+			"context": 1000000
+		}
+	},
+	"us.anthropic.claude-sonnet-5": {
 		"cost": {
 			"cache_read": 0.3,
 			"cache_write": 3.75,

@@ -10,6 +10,16 @@ cache_read,cache_write}` are read — `limit` is informational.
 
 - **Anthropic entries** (226 keys): the ccusage embedded models.dev fallback
   table this file was originally ported from (see `pricing.go`).
+  - **Claude 5 additions** (added 2026-07-24): `claude-opus-5` and
+    `claude-sonnet-5`, each as a bare key plus the `anthropic/` and
+    `{us,eu,global}.anthropic.` gateway forms, hand-curated from Anthropic's
+    published list prices ($5/$25 and $3/$15 per MTok; cache rates follow the
+    standard 0.1x read / 1.25x write multipliers, EU regional at +10% to match
+    the existing Opus 4.8 EU rows). Claude Code transcripts report the bare
+    `claude-opus-5`, so without these every Claude 5 agent job summarized as
+    `MissingPricing`. Sonnet 5's introductory $2/$10 rate (through 2026-08-31)
+    is **not** modeled — this table has no effective-date logic, and list
+    pricing matches the grove-anthropic model registry.
 - **Non-Anthropic entries** (added 2026-07-02 for provider-neutral usage
   accounting, P5 of `codex-pi-opencode-support`): hand-curated from published
   provider list prices as of the curator's knowledge date (2026-01), covering
