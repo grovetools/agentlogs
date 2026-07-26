@@ -66,9 +66,12 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 						info.LogFilePath = p.LogFilePath
 					}
 				}
-				// Enrich from scanner so file-based providers can actually
-				// open the transcript.
-				enrichLogFilePath(info)
+				// Enrich so file-based providers can actually open the
+				// transcript: the job's artifact dir first, scanner last.
+				enrichLogFilePath(info, artifactSessionHints{
+					planDirs: []string{session.PlanDirectory, filepath.Dir(session.JobFilePath)},
+					jobIDs:   []string{session.ID, spec, session.ClaudeSessionID},
+				})
 				return info, nil
 			}
 		}
@@ -176,11 +179,53 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	return nil, fmt.Errorf("could not find session matching spec: %s", spec)
 }
 
-// enrichLogFilePath populates info.LogFilePath from a local scanner pass when
-// the daemon resolved a session but didn't include the transcript path.
-// Matches first by SessionID, then by (Plan, Job) pair across discovered sessions.
-func enrichLogFilePath(info *SessionInfo) {
+// artifactSessionHints carry the plan/job identity the daemon reported for a
+// session. They let the transcript be resolved from that job's own artifact
+// directory instead of a full multi-provider corpus scan. Both fields are
+// candidate lists because the daemon exposes the plan directory and the job id
+// under several names depending on how the session was registered; empty and
+// duplicate values are ignored.
+type artifactSessionHints struct {
+	planDirs []string
+	jobIDs   []string
+}
+
+// resolve tries every (planDir, jobID) pair, returning the first artifact-owned
+// transcript path found.
+func (h artifactSessionHints) resolve() string {
+	seen := make(map[string]bool, len(h.planDirs)*len(h.jobIDs))
+	for _, planDir := range h.planDirs {
+		if planDir == "" || planDir == "." {
+			continue
+		}
+		for _, jobID := range h.jobIDs {
+			if jobID == "" {
+				continue
+			}
+			key := planDir + "\x00" + jobID
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			if resolved, _ := resolveArtifactSessionDir(planDir, jobID); resolved != nil && resolved.LogFilePath != "" {
+				return resolved.LogFilePath
+			}
+		}
+	}
+	return ""
+}
+
+// enrichLogFilePath populates info.LogFilePath when the daemon resolved a
+// session but didn't include the transcript path. The job's own artifact
+// directory is checked first; only if that fails does this fall back to a full
+// scanner pass, matching first by SessionID and then by (Plan, Job) pair.
+func enrichLogFilePath(info *SessionInfo, hints artifactSessionHints) {
 	if info == nil || info.LogFilePath != "" {
+		return
+	}
+	// Resolve the exact job artifact before paying for a corpus-wide scan.
+	if path := hints.resolve(); path != "" {
+		info.LogFilePath = path
 		return
 	}
 	scanner := NewScannerWithoutDaemon()
@@ -208,20 +253,54 @@ func enrichLogFilePath(info *SessionInfo) {
 }
 
 // resolveFlowArtifactSession resolves the transcript owned by one daemon job
-// without scanning provider-global storage. New Pi jobs write sessions/*.jsonl;
-// completed/legacy jobs may instead have metadata.json + transcript.jsonl.
+// without scanning provider-global storage.
 func resolveFlowArtifactSession(job *models.JobInfo) *SessionInfo {
-	if job == nil || job.PlanDir == "" || job.ID == "" {
+	if job == nil {
 		return nil
 	}
-	artifactDir := filepath.Join(job.PlanDir, ".artifacts", job.ID)
+	resolved, archived := resolveArtifactSessionDir(job.PlanDir, job.ID)
+	if resolved == nil {
+		return nil
+	}
+	// Archived sessions are already fully described by their own metadata.
+	if archived {
+		return resolved
+	}
+	info := jobInfoToSessionInfo(job)
+	info.SessionID = resolved.SessionID
+	info.LogFilePath = resolved.LogFilePath
+	info.Provider = resolved.Provider
+	info.StartedAt = resolved.StartedAt
+	if resolved.ProjectPath != "" {
+		info.ProjectPath = resolved.ProjectPath
+		info.ProjectName = resolved.ProjectName
+		info.Worktree = resolved.Worktree
+		info.Ecosystem = resolved.Ecosystem
+	}
+	if len(resolved.Jobs) > 0 {
+		info.Jobs = resolved.Jobs
+	}
+	return info
+}
+
+// resolveArtifactSessionDir resolves the transcript stored in one flow job's
+// .artifacts/<jobID> directory, without touching provider-global storage.
+// Completed/legacy jobs have metadata.json + transcript.jsonl, in which case
+// archived is true and the returned SessionInfo is fully populated from that
+// metadata. New Pi jobs instead write sessions/*.jsonl, for which only the
+// transcript-derived fields are set and the caller merges them onto its own
+// record.
+func resolveArtifactSessionDir(planDir, jobID string) (info *SessionInfo, archived bool) {
+	if planDir == "" || jobID == "" {
+		return nil, false
+	}
+	artifactDir := filepath.Join(planDir, ".artifacts", jobID)
 	scanner := NewScannerWithoutDaemon()
-	if archived := scanner.scanArchivedSessionsInPlanDir(job.PlanDir); len(archived) > 0 {
-		for i := range archived {
-			if archived[i].LogFilePath == filepath.Join(artifactDir, "transcript.jsonl") ||
-				strings.Contains(archived[i].LogFilePath, artifactDir+string(filepath.Separator)) {
-				return &archived[i]
-			}
+	for _, s := range scanner.scanArchivedSessionsInPlanDir(planDir) {
+		if s.LogFilePath == filepath.Join(artifactDir, "transcript.jsonl") ||
+			strings.Contains(s.LogFilePath, artifactDir+string(filepath.Separator)) {
+			found := s
+			return &found, true
 		}
 	}
 
@@ -235,26 +314,26 @@ func resolveFlowArtifactSession(job *models.JobInfo) *SessionInfo {
 		}
 	}
 	if newest == "" {
-		return nil
+		return nil, false
 	}
 
 	sessionID, cwd, startedAt, jobs, found := scanner.parsePiLog(newest)
 	if !found {
-		return nil
+		return nil, false
 	}
-	info := jobInfoToSessionInfo(job)
-	info.SessionID = sessionID
-	info.LogFilePath = newest
-	info.Provider = "pi"
-	info.StartedAt = startedAt
+	out := &SessionInfo{
+		SessionID:   sessionID,
+		LogFilePath: newest,
+		Provider:    "pi",
+		StartedAt:   startedAt,
+		Jobs:        jobs,
+	}
 	if cwd != "" {
-		info.ProjectPath = cwd
-		info.ProjectName = filepath.Base(cwd)
+		// Derive worktree/ecosystem the same way the scanner path does, so
+		// fast-path sessions don't show blank columns in flow's status TUI.
+		out.ProjectPath, out.ProjectName, out.Worktree, out.Ecosystem = scanner.parseProjectPath(cwd)
 	}
-	if len(jobs) > 0 {
-		info.Jobs = jobs
-	}
-	return info
+	return out, false
 }
 
 // jobInfoToSessionInfo converts a daemon JobInfo into a SessionInfo.
