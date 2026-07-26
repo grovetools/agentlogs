@@ -99,6 +99,12 @@ func formatToolOutput(toolName, output, detailLevel string, mutedStyle lipgloss.
 	return fmt.Sprintf("Output: %s", output)
 }
 
+// ToolCallSummary returns the stable, compact one-line representation used by
+// transcript outlines and other navigation surfaces.
+func ToolCallSummary(tool transcript.UnifiedToolCall) string {
+	return formatUnifiedToolCall(tool, "summary", DefaultToolFormatters(), lipgloss.NewStyle())
+}
+
 // formatUnifiedToolCall formats a tool call for display.
 // Uses consistent ToolName(arg) format for all tools.
 // For Edit/Write tools, uses specialized formatters to show diffs.
