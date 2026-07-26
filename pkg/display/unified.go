@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/grovetools/agentlogs/pkg/formatters"
 	"github.com/grovetools/agentlogs/pkg/transcript"
@@ -99,10 +100,13 @@ func formatToolOutput(toolName, output, detailLevel string, mutedStyle lipgloss.
 	return fmt.Sprintf("Output: %s", output)
 }
 
-// ToolCallSummary returns the stable, compact one-line representation used by
-// transcript outlines and other navigation surfaces.
+// ToolCallSummary returns a stable, compact, plain one-line representation
+// used by transcript outlines and other navigation surfaces. It deliberately
+// strips terminal styling and folds formatter newlines/whitespace so callers
+// do not need display-specific sanitization.
 func ToolCallSummary(tool transcript.UnifiedToolCall) string {
-	return formatUnifiedToolCall(tool, "summary", DefaultToolFormatters(), lipgloss.NewStyle())
+	rendered := formatUnifiedToolCall(tool, "summary", DefaultToolFormatters(), lipgloss.NewStyle())
+	return strings.Join(strings.Fields(ansi.Strip(rendered)), " ")
 }
 
 // formatUnifiedToolCall formats a tool call for display.
