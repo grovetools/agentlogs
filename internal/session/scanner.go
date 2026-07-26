@@ -201,6 +201,8 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 // Scan searches for and parses all Claude and Codex session logs.
 func (s *Scanner) Scan() ([]SessionInfo, error) {
 	logger := logging.NewLogger("aglogs-scan")
+	scanStarted := time.Now()
+	parsedFiles, cachedFiles, recognizedFiles := 0, 0, 0
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		logger.WithError(err).Error("Failed to get user home directory")
@@ -277,24 +279,16 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	registryJobSessionIDs := make(map[string]bool)
 
 	for _, logPath := range matches {
-		var sessionID, cwd string
-		var startedAt time.Time
-		var jobs []JobInfo
-		found := false
-
-		if strings.Contains(logPath, "/.codex/") {
-			sessionID, cwd, startedAt, jobs, found = s.parseCodexLog(logPath)
-		} else if strings.Contains(logPath, "/.pi/") {
-			sessionID, cwd, startedAt, jobs, found = s.parsePiLog(logPath)
+		parsed, cacheHit := s.parseTranscriptCached(logPath)
+		sessionID, cwd, startedAt, jobs, found := parsed.sessionID, parsed.cwd, parsed.startedAt, parsed.jobs, parsed.found
+		if cacheHit {
+			cachedFiles++
 		} else {
-			sessionID, cwd, startedAt, jobs, found = s.parseClaudeLog(logPath)
+			parsedFiles++
 		}
-
-		logger.WithFields(map[string]interface{}{
-			"transcript_file": filepath.Base(logPath),
-			"session_id":      sessionID,
-			"found":           found,
-		}).Debug("Parsed transcript file")
+		if found {
+			recognizedFiles++
+		}
 
 		// 2. Prioritize data from the registry if available.
 		if metadata, foundInRegistry := registry[sessionID]; foundInRegistry {
@@ -461,6 +455,14 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 		}
 	}
 
+	logger.WithFields(map[string]interface{}{
+		"files":       len(matches),
+		"parsed":      parsedFiles,
+		"cached":      cachedFiles,
+		"recognized":  recognizedFiles,
+		"sessions":    len(sessions),
+		"duration_ms": time.Since(scanStarted).Milliseconds(),
+	}).Debug("Transcript scan complete")
 	return sessions, nil
 }
 

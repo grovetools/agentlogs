@@ -74,12 +74,17 @@ type rawLine struct {
 // entries, tagged with the given path-derived sessionID/projectPath. Lines
 // without message.usage are skipped (they carry no billing). Malformed lines are
 // skipped for format-drift tolerance; only an open error is returned.
-func loadFileEntries(path, sessionID, projectPath string) ([]loadedEntry, error) {
+func loadFileEntriesFrom(path, sessionID, projectPath string, offset int64) ([]loadedEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	if offset > 0 {
+		if _, err := f.Seek(offset, 0); err != nil {
+			return nil, err
+		}
+	}
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64*1024), maxLineSize)

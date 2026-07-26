@@ -262,8 +262,7 @@ func SummarizeSession(slugDirs []string, sessionID string, mode CostMode) (Summa
 		return Summary{}, err
 	}
 
-	var all []loadedEntry
-	var agentIDs []string
+	deduper := newTaggedDeduper()
 	projectPath := ""
 	for _, df := range files {
 		entries, err := loadFileEntries(df.Path, sessionID, "")
@@ -273,16 +272,12 @@ func SummarizeSession(slugDirs []string, sessionID string, mode CostMode) (Summa
 		if projectPath == "" {
 			projectPath = slugFromPath(df.Path)
 		}
-		aid := agentIDFromPath(df.Path, df.Role)
-		for _, e := range entries {
-			all = append(all, e)
-			agentIDs = append(agentIDs, aid)
-		}
+		deduper.Add(entries, agentIDFromPath(df.Path, df.Role))
 	}
 
-	// Dedup globally, but preserve the parallel agentID slice.
-	all, agentIDs = dedupeWithTags(all, agentIDs)
-	s := summarize(sessionID, projectPath, all, agentIDs, mode, pm)
+	// Files are decoded incrementally and folded directly into the global
+	// deduper, avoiding the former duplicate full-session entry slice.
+	s := summarize(sessionID, projectPath, deduper.entries, deduper.tags, mode, pm)
 	return s, nil
 }
 
@@ -308,6 +303,51 @@ func slugFromPath(path string) string {
 		}
 	}
 	return ""
+}
+
+type taggedDeduper struct {
+	entries   []loadedEntry
+	tags      []string
+	exactKey  map[string]int
+	byMessage map[string][]int
+}
+
+func newTaggedDeduper() *taggedDeduper {
+	return &taggedDeduper{exactKey: make(map[string]int), byMessage: make(map[string][]int)}
+}
+
+func (d *taggedDeduper) Add(entries []loadedEntry, tag string) {
+	for _, e := range entries {
+		if e.MessageID == "" {
+			d.entries = append(d.entries, e)
+			d.tags = append(d.tags, tag)
+			continue
+		}
+		ek := e.MessageID + "\x00" + e.RequestID
+		idx := -1
+		if i, ok := d.exactKey[ek]; ok {
+			idx = i
+		} else {
+			for _, i := range d.byMessage[e.MessageID] {
+				if e.IsSidechain || d.entries[i].IsSidechain {
+					idx = i
+					break
+				}
+			}
+		}
+		if idx >= 0 {
+			if shouldReplace(e, d.entries[idx]) {
+				d.entries[idx], d.tags[idx] = e, tag
+			}
+			d.exactKey[ek] = idx
+			continue
+		}
+		idx = len(d.entries)
+		d.entries = append(d.entries, e)
+		d.tags = append(d.tags, tag)
+		d.exactKey[ek] = idx
+		d.byMessage[e.MessageID] = append(d.byMessage[e.MessageID], idx)
+	}
 }
 
 // dedupeWithTags applies the same dedup as dedupe but keeps a parallel tag slice

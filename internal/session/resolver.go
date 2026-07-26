@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/grovetools/core/pkg/daemon"
 	"github.com/grovetools/core/pkg/models"
@@ -24,9 +25,13 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 		// Try daemon job registry first — this is the primary source in the new architecture
 		if job, err := daemonClient.GetJob(context.Background(), spec); err == nil && job != nil {
 			if job.Type == "interactive_agent" || job.Type == "headless_agent" || job.Type == "isolated_agent" {
-				// For agent jobs, the true transcript is the provider's JSONL file.
-				// The daemon only has orchestrator launch output, not the actual transcript.
-				// Fall through to full scan so it matches via the session registry with LogFilePath.
+				// Flow-owned Pi sessions live outside the provider's global root.
+				// Resolve the exact job artifact before considering a corpus scan.
+				if info := resolveFlowArtifactSession(job); info != nil {
+					return info, nil
+				}
+				// The daemon log is orchestrator output, not the provider transcript.
+				// Fall through for legacy jobs whose artifact has no session file.
 			} else {
 				return jobInfoToSessionInfo(job), nil
 			}
@@ -200,6 +205,56 @@ func enrichLogFilePath(info *SessionInfo) {
 			}
 		}
 	}
+}
+
+// resolveFlowArtifactSession resolves the transcript owned by one daemon job
+// without scanning provider-global storage. New Pi jobs write sessions/*.jsonl;
+// completed/legacy jobs may instead have metadata.json + transcript.jsonl.
+func resolveFlowArtifactSession(job *models.JobInfo) *SessionInfo {
+	if job == nil || job.PlanDir == "" || job.ID == "" {
+		return nil
+	}
+	artifactDir := filepath.Join(job.PlanDir, ".artifacts", job.ID)
+	scanner := NewScannerWithoutDaemon()
+	if archived := scanner.scanArchivedSessionsInPlanDir(job.PlanDir); len(archived) > 0 {
+		for i := range archived {
+			if archived[i].LogFilePath == filepath.Join(artifactDir, "transcript.jsonl") ||
+				strings.Contains(archived[i].LogFilePath, artifactDir+string(filepath.Separator)) {
+				return &archived[i]
+			}
+		}
+	}
+
+	matches, _ := filepath.Glob(filepath.Join(artifactDir, "sessions", "*.jsonl"))
+	var newest string
+	var newestMod time.Time
+	for _, path := range matches {
+		stat, err := os.Stat(path)
+		if err == nil && !stat.IsDir() && (newest == "" || stat.ModTime().After(newestMod)) {
+			newest, newestMod = path, stat.ModTime()
+		}
+	}
+	if newest == "" {
+		return nil
+	}
+
+	sessionID, cwd, startedAt, jobs, found := scanner.parsePiLog(newest)
+	if !found {
+		return nil
+	}
+	info := jobInfoToSessionInfo(job)
+	info.SessionID = sessionID
+	info.LogFilePath = newest
+	info.Provider = "pi"
+	info.StartedAt = startedAt
+	if cwd != "" {
+		info.ProjectPath = cwd
+		info.ProjectName = filepath.Base(cwd)
+	}
+	if len(jobs) > 0 {
+		info.Jobs = jobs
+	}
+	return info
 }
 
 // jobInfoToSessionInfo converts a daemon JobInfo into a SessionInfo.
