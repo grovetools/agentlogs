@@ -16,6 +16,12 @@ type UnifiedEntry struct {
 	AgentID     string         `json:"agentID,omitempty"`     // Subagent ID for sidechain/workflow transcripts
 	IsSidechain bool           `json:"isSidechain,omitempty"` // True for subagent (sidechain) entries
 	PromptID    string         `json:"promptID,omitempty"`    // Prompt ID linking sidechain entries to their spawning prompt
+	// CustomType names the extension that injected this entry (pi
+	// custom_message: "flow-subjob-events", …). Such entries enter the model's
+	// context as user turns and so normalize to Role "user", but nobody typed
+	// them — renderers use this to tell a machine notification apart from a
+	// human prompt. Empty for ordinary conversation.
+	CustomType string `json:"customType,omitempty"`
 }
 
 // UnifiedPart represents a component of a message.

@@ -134,6 +134,10 @@ func normalizePiEntry(raw *piFileEntry) *UnifiedEntry {
 			return nil
 		}
 		entry := newPiUnifiedEntry(raw, "user")
+		// Carry the injecting extension's identity: the entry is a user turn to
+		// the model, but it is a machine notification to a reader, and only
+		// customType distinguishes the two after normalization.
+		entry.CustomType = raw.CustomType
 		for _, part := range piTextParts(raw.Content) {
 			entry.Parts = append(entry.Parts, part)
 		}

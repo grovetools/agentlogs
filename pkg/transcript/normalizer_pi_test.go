@@ -119,6 +119,44 @@ func TestPiNormalizer_NormalizeLine_NonConversationEntriesSkipped(t *testing.T) 
 	}
 }
 
+// TestPiNormalizer_CustomMessageCarriesCustomType: a displayed custom_message
+// (a subjob-monitor notification, say) normalizes to a user entry because that
+// is how it reaches the model — but it was injected by an extension, not typed
+// by a human. customType is the only thing that survives to say so, and
+// renderers key their notification styling off it.
+func TestPiNormalizer_CustomMessageCarriesCustomType(t *testing.T) {
+	n := NewPiNormalizer()
+	line := `{"type":"custom_message","id":"cm1","parentId":"c1","timestamp":"2026-07-01T10:00:00.000Z","customType":"flow-subjob-events","content":"Reports ready; join before using:\n- job-7","display":true}`
+
+	entry, err := n.NormalizeLine([]byte(line))
+	if err != nil {
+		t.Fatalf("NormalizeLine: %v", err)
+	}
+	if entry == nil {
+		t.Fatal("displayed custom_message dropped")
+	}
+	if entry.Role != "user" {
+		t.Errorf("Role = %q, want user", entry.Role)
+	}
+	if entry.CustomType != "flow-subjob-events" {
+		t.Errorf("CustomType = %q, want flow-subjob-events", entry.CustomType)
+	}
+}
+
+// A human prompt must stay unmarked, or every row would render as a notification.
+func TestPiNormalizer_UserMessageHasNoCustomType(t *testing.T) {
+	n := NewPiNormalizer()
+	line := `{"type":"message","id":"m1","parentId":null,"timestamp":"2026-07-01T10:00:00.000Z","message":{"role":"user","content":"do the thing"}}`
+
+	entry, err := n.NormalizeLine([]byte(line))
+	if err != nil || entry == nil {
+		t.Fatalf("NormalizeLine: %v, %+v", err, entry)
+	}
+	if entry.CustomType != "" {
+		t.Errorf("CustomType = %q, want empty for a typed prompt", entry.CustomType)
+	}
+}
+
 // TestNormalizePiFile_BranchedFixture is the core linearization test: the
 // active path is leaf (last entry) -> parentId chain -> root, so the
 // abandoned branch entry must not appear and order must be conversation order.
