@@ -24,17 +24,29 @@ func ResolveSessionInfo(spec string) (*SessionInfo, error) {
 	if daemonClient.IsRunning() {
 		// Try daemon job registry first — this is the primary source in the new architecture
 		if job, err := daemonClient.GetJob(context.Background(), spec); err == nil && job != nil {
-			if job.Type == "interactive_agent" || job.Type == "headless_agent" || job.Type == "isolated_agent" {
-				// Flow-owned Pi sessions live outside the provider's global root.
-				// Resolve the exact job artifact before considering a corpus scan.
-				if info := resolveFlowArtifactSession(job); info != nil {
-					return info, nil
-				}
-				// The daemon log is orchestrator output, not the provider transcript.
-				// Fall through for legacy jobs whose artifact has no session file.
-			} else {
+			// The artifact directory is ground truth, and reaching it needs
+			// nothing but plan_dir + job id. Gating that on job.Type made
+			// resolution depend on record shape: a typeless duplicate record
+			// for the same job took the else branch below and answered with a
+			// job.log path (orchestrator output) or with nothing at all, while
+			// the transcript sat in the artifact directory the type gate had
+			// skipped. Try the artifact first for every record.
+			if info := resolveFlowArtifactSession(job); info != nil {
+				return info, nil
+			}
+			// Several daemon records can name the same job (a Flow-ID record
+			// and a legacy filename-keyed one). Whichever won the lookup, the
+			// record that resolves to a real transcript is the right answer.
+			if info := resolveSiblingArtifactSession(daemonClient, job); info != nil {
+				return info, nil
+			}
+			if !isAgentJobType(job.Type) {
+				// Non-agent jobs have no provider transcript; their daemon
+				// record is the whole answer.
 				return jobInfoToSessionInfo(job), nil
 			}
+			// The daemon log is orchestrator output, not the provider transcript.
+			// Fall through for legacy jobs whose artifact has no session file.
 		} else {
 			// Fall back to daemon session lookup (for sessions not managed as jobs)
 			if session, err := daemonClient.GetSession(context.Background(), spec); err == nil && session != nil {
@@ -250,6 +262,44 @@ func enrichLogFilePath(info *SessionInfo, hints artifactSessionHints) {
 			}
 		}
 	}
+}
+
+// isAgentJobType reports whether a daemon job record describes an agent run,
+// whose transcript is written by a provider rather than by the orchestrator.
+func isAgentJobType(t models.JobType) bool {
+	return t == "interactive_agent" || t == "headless_agent" || t == "isolated_agent"
+}
+
+// resolveSiblingArtifactSession looks for another daemon record describing the
+// same job (same plan directory and job file) whose artifact directory does
+// hold a transcript.
+//
+// Duplicate records exist because job submission once minted a second,
+// filename-derived key for a job that already had a Flow ID. The duplicate
+// carries no type and points at job.log, so when it wins the lookup the real
+// transcript — sitting under the Flow ID's artifact directory — is never
+// consulted. Records are being collapsed, but resolution must stay correct for
+// the ones already on disk.
+func resolveSiblingArtifactSession(client daemon.Client, job *models.JobInfo) *SessionInfo {
+	if client == nil || job == nil || job.PlanDir == "" || job.JobFile == "" {
+		return nil
+	}
+	siblings, err := client.ListJobs(context.Background(), models.JobFilter{})
+	if err != nil {
+		return nil
+	}
+	for _, sibling := range siblings {
+		if sibling == nil || sibling.ID == job.ID {
+			continue
+		}
+		if sibling.JobFile != job.JobFile || filepath.Clean(sibling.PlanDir) != filepath.Clean(job.PlanDir) {
+			continue
+		}
+		if info := resolveFlowArtifactSession(sibling); info != nil {
+			return info
+		}
+	}
+	return nil
 }
 
 // resolveFlowArtifactSession resolves the transcript owned by one daemon job

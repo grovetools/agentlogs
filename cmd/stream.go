@@ -44,6 +44,11 @@ func providerForLogPath(path string) string {
 		return "codex"
 	case strings.Contains(path, "/.pi/"), strings.Contains(path, "/pi/agent/sessions/"):
 		return "pi"
+	case strings.Contains(path, "/.artifacts/") && strings.Contains(path, "/sessions/"):
+		// A flow job's own session directory. Only the Pi runtime writes
+		// there, so a path handed in directly (as flow does when the session
+		// registry has no record) must be parsed as Pi, not as the default.
+		return "pi"
 	default:
 		return "claude"
 	}

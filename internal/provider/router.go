@@ -12,7 +12,11 @@ import (
 // If the daemon is running and manages this job, it returns a DaemonSource.
 // Otherwise, it falls back to a direct file-based provider.
 func SelectSource(info *session.SessionInfo, daemonClient daemon.Client) TranscriptSource {
-	if daemonClient != nil && info.SessionID != "" && info.SessionID != "unknown" {
+	// A resolved transcript path outranks any daemon record. The daemon can
+	// only offer orchestrator output (job.log) for these sessions, so once
+	// resolution has found the provider's own transcript, reading anything
+	// else would be a downgrade.
+	if info.LogFilePath == "" && daemonClient != nil && info.SessionID != "" && info.SessionID != "unknown" {
 		if daemonClient.IsRunning() {
 			if job, _ := daemonClient.GetJob(context.Background(), info.SessionID); job != nil {
 				if job.Type == "interactive_agent" || job.Type == "headless_agent" || job.Type == "isolated_agent" {

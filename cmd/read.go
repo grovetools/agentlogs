@@ -131,6 +131,14 @@ func newReadCmd() *cobra.Command {
 
 			entries, err := src.Read(cmd.Context(), sessionInfo, opts)
 			if err != nil {
+				// An empty LogFilePath is a resolution failure, not an I/O
+				// failure. Reporting it as `open : no such file or directory`
+				// blames the filesystem for a path that was never resolved and
+				// tells the user nothing about which lookup came up empty.
+				if sessionInfo.LogFilePath == "" {
+					return fmt.Errorf("no transcript resolved for %q: matched session %q (provider %s) but no transcript path came with it — the daemon record carries none and no transcript exists under the plan's .artifacts/<job-id>/sessions/ directory (underlying error: %w)",
+						spec, sessionInfo.SessionID, sessionInfo.Provider, err)
+				}
 				return fmt.Errorf("failed to read transcript: %w", err)
 			}
 

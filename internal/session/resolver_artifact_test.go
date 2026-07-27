@@ -44,6 +44,58 @@ func TestResolveFlowArtifactSessionPrefersJobSessionsDirectory(t *testing.T) {
 	}
 }
 
+// Resolution used to be gated on job.Type, so a duplicate daemon record with no
+// type at all took the branch that answers with the record itself — pointing at
+// job.log, or at nothing — while the transcript sat in the artifact directory
+// the type gate had skipped. The artifact directory is ground truth and needs
+// only plan_dir + job id to reach.
+func TestResolveFlowArtifactSessionIgnoresRecordType(t *testing.T) {
+	planDir := t.TempDir()
+	jobID := "git-status-mitigations-4cf449ea"
+	sessionsDir := filepath.Join(planDir, ".artifacts", jobID, "sessions")
+	if err := os.MkdirAll(sessionsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(sessionsDir, "2026-07-27T18-17-24-234Z_019fa4cb.jsonl")
+	data := `{"type":"session","id":"019fa4cb","timestamp":"2026-07-27T18:17:24Z","cwd":"/tmp/repo"}` + "\n"
+	if err := os.WriteFile(want, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exactly the shape of the duplicate record: no type, log_file_path
+	// pointing at orchestrator output.
+	typeless := &models.JobInfo{
+		ID:          jobID,
+		PlanDir:     planDir,
+		JobFile:     "34-git-status-mitigations.md",
+		LogFilePath: filepath.Join(planDir, ".artifacts", jobID, "job.log"),
+	}
+
+	got := resolveFlowArtifactSession(typeless)
+	if got == nil {
+		t.Fatal("a record with plan_dir + job id must resolve its artifact transcript, whatever its type")
+	}
+	if got.LogFilePath != want {
+		t.Fatalf("resolved the wrong file: got %q, want %q", got.LogFilePath, want)
+	}
+	if got.Provider != "pi" {
+		t.Fatalf("artifact transcripts are Pi transcripts, got provider %q", got.Provider)
+	}
+}
+
+func TestIsAgentJobType(t *testing.T) {
+	for _, agent := range []models.JobType{"interactive_agent", "headless_agent", "isolated_agent"} {
+		if !isAgentJobType(agent) {
+			t.Errorf("%q should be an agent job type", agent)
+		}
+	}
+	for _, other := range []models.JobType{"", "chat", "oneshot", "shell"} {
+		if isAgentJobType(other) {
+			t.Errorf("%q should not be an agent job type", other)
+		}
+	}
+}
+
 // enrichLogFilePath must resolve the job's own artifact transcript instead of
 // falling through to a full multi-provider corpus scan.
 func TestEnrichLogFilePathUsesJobArtifactDirectory(t *testing.T) {
