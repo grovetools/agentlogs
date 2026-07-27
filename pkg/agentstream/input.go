@@ -80,9 +80,16 @@ func SendInput(ctx context.Context, tmuxTarget, input string, opts ...InputOptio
 }
 
 // newMuxEngine creates a MuxEngine, using a specific socket if configured.
+// A non-nil error always comes with a nil engine: forwarding the concrete
+// *TmuxEngine result straight out would wrap a nil pointer in a non-nil
+// interface, and any `engine != nil` guard downstream would then panic.
 func newMuxEngine(cfg *inputConfig) (mux.MuxEngine, error) {
 	if cfg.socket != "" {
-		return mux.NewTmuxEngineWithSocket(cfg.socket)
+		engine, err := mux.NewTmuxEngineWithSocket(cfg.socket)
+		if err != nil {
+			return nil, err
+		}
+		return engine, nil
 	}
 	return mux.DetectMuxEngine(context.Background())
 }
