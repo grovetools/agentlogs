@@ -62,6 +62,39 @@ var fileToolTable = []fileToolRule{
 	{Provider: "pi", Tool: "write", InputKeys: []string{"path"}, Edit: true},
 }
 
+// FileTouch is one file-taking tool call resolved against the file-tool table:
+// the path the call named, and whether the call mutated it.
+type FileTouch struct {
+	Path string
+	Edit bool
+}
+
+// ToolCallFileTouch resolves a single tool call to the file it touched, or
+// reports false when the (provider, tool) pair is not in the table or the call
+// carries no usable path. It is the per-call primitive behind this package's
+// session roll-ups, exported so live consumers — treemux's accessed-files
+// drawer streams a transcript entry at a time — classify tool calls with the
+// SAME vocabulary rather than a parallel, quietly diverging table of their own.
+func ToolCallFileTouch(provider string, call transcript.UnifiedToolCall) (FileTouch, bool) {
+	p := strings.ToLower(provider)
+	name := strings.ToLower(call.Name)
+	for _, rule := range fileToolTable {
+		if rule.Provider != p || rule.Tool != name {
+			continue
+		}
+		if path := firstStringValue(call.Input, rule.InputKeys); path != "" {
+			return FileTouch{Path: path, Edit: rule.Edit}, true
+		}
+	}
+	return FileTouch{}, false
+}
+
+// ProviderTracksFileTouches is the exported form of providerSupported: it
+// reports whether file access can be measured for a provider at all, so a
+// caller can say "not measurable here" rather than render a misleading empty
+// list.
+func ProviderTracksFileTouches(provider string) bool { return providerSupported(provider) }
+
 // providerSupported reports whether the file-touch table knows anything at all
 // about a provider. Providers it does not know yield nil file counts plus an
 // "unsupported" list, never a misleading zero.
@@ -111,22 +144,14 @@ func newFileTouches() *fileTouches {
 // observe applies the table to a single tool call. Unknown provider/tool pairs
 // and rules whose keys are absent or non-string are silently ignored.
 func (f *fileTouches) observe(provider string, call transcript.UnifiedToolCall) {
-	p := strings.ToLower(provider)
-	name := strings.ToLower(call.Name)
-
-	for _, rule := range fileToolTable {
-		if rule.Provider != p || rule.Tool != name {
-			continue
-		}
-		path := firstStringValue(call.Input, rule.InputKeys)
-		if path == "" {
-			continue
-		}
-		// An edit is also a touch.
-		f.touched[path] = struct{}{}
-		if rule.Edit {
-			f.edited[path] = struct{}{}
-		}
+	touch, ok := ToolCallFileTouch(provider, call)
+	if !ok {
+		return
+	}
+	// An edit is also a touch.
+	f.touched[touch.Path] = struct{}{}
+	if touch.Edit {
+		f.edited[touch.Path] = struct{}{}
 	}
 }
 
