@@ -20,6 +20,23 @@ type fileToolRule struct {
 	Tool      string
 	InputKeys []string
 	Edit      bool
+
+	// OldKeys / NewKeys name the input keys carrying the text a mutating call
+	// REPLACED and the text it wrote in its place; when both resolve, the call's
+	// line churn is measurable (see lineChurn). EditsKey instead names an
+	// array-valued key whose elements are themselves {old,new} objects, each
+	// read with the same OldKeys/NewKeys spellings and summed.
+	//
+	// A rule may set neither, which means "this call mutates the file but its
+	// churn is not derivable from the transcript" — Write carries only the new
+	// contents, so there is no way to tell a 400-line new file from a 400-line
+	// rewrite of a 400-line file. Such a call reports zero churn and is
+	// deliberately NOT counted, in keeping with this table's undercount-rather-
+	// than-guess rule: a consumer renders "an agent wrote this" without a line
+	// count rather than a number that would contradict git's own.
+	OldKeys  []string
+	NewKeys  []string
+	EditsKey string
 }
 
 // fileToolTable is the entire file-touch vocabulary this package understands.
@@ -39,9 +56,11 @@ type fileToolRule struct {
 var fileToolTable = []fileToolRule{
 	{Provider: "claude", Tool: "read", InputKeys: []string{"file_path"}, Edit: false},
 	{Provider: "claude", Tool: "grep", InputKeys: []string{"path"}, Edit: false},
-	{Provider: "claude", Tool: "edit", InputKeys: []string{"file_path"}, Edit: true},
+	{Provider: "claude", Tool: "edit", InputKeys: []string{"file_path"}, Edit: true,
+		OldKeys: []string{"old_string"}, NewKeys: []string{"new_string"}},
 	{Provider: "claude", Tool: "write", InputKeys: []string{"file_path"}, Edit: true},
-	{Provider: "claude", Tool: "multiedit", InputKeys: []string{"file_path"}, Edit: true},
+	{Provider: "claude", Tool: "multiedit", InputKeys: []string{"file_path"}, Edit: true,
+		OldKeys: []string{"old_string"}, NewKeys: []string{"new_string"}, EditsKey: "edits"},
 	{Provider: "claude", Tool: "notebookedit", InputKeys: []string{"notebook_path", "file_path"}, Edit: true},
 
 	// pi rows. pi's entire tool vocabulary is read/bash/edit/write/grep/find/ls
@@ -54,6 +73,12 @@ var fileToolTable = []fileToolRule{
 	// bash is deliberately absent: bashSchema is {command, timeout} only, so
 	// there is genuinely no structured path to read. That is the one tool the
 	// original "pi is unsupported" note was actually describing.
+	//
+	// No pi row carries churn keys. pi's edit takes an `edits` array, but the
+	// spelling of the keys INSIDE its elements is not attested anywhere in this
+	// repo, and the churn fields exist to be exact — a guessed spelling would
+	// silently report zero anyway (see fileToolRule.OldKeys). pi edits therefore
+	// register as mutations with unmeasured churn.
 	{Provider: "pi", Tool: "read", InputKeys: []string{"path"}, Edit: false},
 	{Provider: "pi", Tool: "grep", InputKeys: []string{"path"}, Edit: false},
 	{Provider: "pi", Tool: "find", InputKeys: []string{"path"}, Edit: false},
@@ -63,10 +88,19 @@ var fileToolTable = []fileToolRule{
 }
 
 // FileTouch is one file-taking tool call resolved against the file-tool table:
-// the path the call named, and whether the call mutated it.
+// the path the call named, whether the call mutated it, and how many lines that
+// mutation added and removed.
+//
+// LinesAdded/LinesRemoved are the call's OWN churn, measured from the tool
+// arguments (see lineChurn) — not the file's total churn against git, which the
+// transcript cannot know. They are zero for a read, and also zero for a
+// mutation whose churn is not derivable (Write, pi edit; see fileToolRule), so
+// a consumer must treat 0/0 on an Edit as "unmeasured", never as "no change".
 type FileTouch struct {
-	Path string
-	Edit bool
+	Path         string
+	Edit         bool
+	LinesAdded   int
+	LinesRemoved int
 }
 
 // ToolCallFileTouch resolves a single tool call to the file it touched, or
@@ -83,10 +117,78 @@ func ToolCallFileTouch(provider string, call transcript.UnifiedToolCall) (FileTo
 			continue
 		}
 		if path := firstStringValue(call.Input, rule.InputKeys); path != "" {
-			return FileTouch{Path: path, Edit: rule.Edit}, true
+			added, removed := ruleChurn(rule, call.Input)
+			return FileTouch{Path: path, Edit: rule.Edit, LinesAdded: added, LinesRemoved: removed}, true
 		}
 	}
 	return FileTouch{}, false
+}
+
+// ruleChurn measures one call's line churn through rule's churn keys: a single
+// old/new pair, or every element of an EditsKey array summed (one MultiEdit call
+// is several replacements in one file). A rule with no churn keys, or arguments
+// that do not carry them, yields 0/0 — unmeasured, not "unchanged".
+func ruleChurn(rule fileToolRule, input map[string]interface{}) (added, removed int) {
+	if input == nil || (len(rule.OldKeys) == 0 && len(rule.NewKeys) == 0) {
+		return 0, 0
+	}
+	if rule.EditsKey != "" {
+		edits, ok := input[rule.EditsKey].([]interface{})
+		if ok {
+			for _, e := range edits {
+				elem, ok := e.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				a, r := lineChurn(firstStringValue(elem, rule.OldKeys), firstStringValue(elem, rule.NewKeys))
+				added += a
+				removed += r
+			}
+			return added, removed
+		}
+		// An EditsKey rule whose call carries the pair directly is still
+		// measurable — the multi-edit spelling is a superset of the single one,
+		// so fall through rather than reporting nothing.
+	}
+	return lineChurn(firstStringValue(input, rule.OldKeys), firstStringValue(input, rule.NewKeys))
+}
+
+// lineChurn measures how many lines a replacement added and removed, after
+// discarding the common leading and trailing lines the edit left untouched.
+//
+// This is a diff-free approximation of `git diff --numstat` for one hunk: an
+// agent's old_string/new_string usually share several anchor lines (that is how
+// the edit is made unique), and counting those as both added and removed would
+// roughly double every number. Trimming them costs nothing and lands on git's
+// figure whenever the changed lines are contiguous, which they are for the great
+// majority of edits. It does NOT run an LCS, so an edit that changes the first
+// and last line of a large region still reports the whole region — an
+// overstatement bounded by the size of the string the agent actually passed.
+func lineChurn(oldText, newText string) (added, removed int) {
+	if oldText == newText {
+		return 0, 0
+	}
+	oldLines, newLines := splitLines(oldText), splitLines(newText)
+	prefix := 0
+	for prefix < len(oldLines) && prefix < len(newLines) && oldLines[prefix] == newLines[prefix] {
+		prefix++
+	}
+	suffix := 0
+	for suffix < len(oldLines)-prefix && suffix < len(newLines)-prefix &&
+		oldLines[len(oldLines)-1-suffix] == newLines[len(newLines)-1-suffix] {
+		suffix++
+	}
+	return len(newLines) - prefix - suffix, len(oldLines) - prefix - suffix
+}
+
+// splitLines counts a tool argument's lines the way a diff would: an empty
+// string is no lines at all (an insertion removes nothing), and a single
+// trailing newline terminates the last line rather than starting an empty one.
+func splitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
 // ProviderTracksFileTouches is the exported form of providerSupported: it
