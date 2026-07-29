@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/grovetools/core v0.6.3
-	github.com/grovetools/eval v0.0.0-00010101000000-000000000000
+	github.com/grovetools/eval v0.0.0-20260724205137-f2ccb7b82b04
 	github.com/grovetools/tend v0.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/sirupsen/logrus v1.9.3
@@ -55,8 +55,9 @@ require (
 	golang.org/x/text v0.33.0 // indirect
 )
 
-// eval has no published release yet; the require above carries the null
-// pseudo-version and this replace resolves it from the local worktree so
-// builds work with GOWORK off too. Land-time: publish eval, bump the require
-// to the tagged version, and drop this replace (go.work already `use`s it).
-replace github.com/grovetools/eval => ../eval
+// eval carries a commit pseudo-version rather than a tag: it has no release yet.
+// The pseudo-version above pins the exact origin/main commit this module builds
+// against, so the published go.mod resolves through the module graph (a `replace`
+// would not — consumers ignore a dependency's replaces). In-workspace development
+// still resolves eval from the local worktree via go.work. Release-time: tag eval
+// and bump the require to the tag — see grove/docs/11-release-runbook-modules.md.
