@@ -56,11 +56,15 @@ type fileToolRule struct {
 var fileToolTable = []fileToolRule{
 	{Provider: "claude", Tool: "read", InputKeys: []string{"file_path"}, Edit: false},
 	{Provider: "claude", Tool: "grep", InputKeys: []string{"path"}, Edit: false},
-	{Provider: "claude", Tool: "edit", InputKeys: []string{"file_path"}, Edit: true,
-		OldKeys: []string{"old_string"}, NewKeys: []string{"new_string"}},
+	{
+		Provider: "claude", Tool: "edit", InputKeys: []string{"file_path"}, Edit: true,
+		OldKeys: []string{"old_string"}, NewKeys: []string{"new_string"},
+	},
 	{Provider: "claude", Tool: "write", InputKeys: []string{"file_path"}, Edit: true},
-	{Provider: "claude", Tool: "multiedit", InputKeys: []string{"file_path"}, Edit: true,
-		OldKeys: []string{"old_string"}, NewKeys: []string{"new_string"}, EditsKey: "edits"},
+	{
+		Provider: "claude", Tool: "multiedit", InputKeys: []string{"file_path"}, Edit: true,
+		OldKeys: []string{"old_string"}, NewKeys: []string{"new_string"}, EditsKey: "edits",
+	},
 	{Provider: "claude", Tool: "notebookedit", InputKeys: []string{"notebook_path", "file_path"}, Edit: true},
 
 	// pi rows. pi's entire tool vocabulary is read/bash/edit/write/grep/find/ls
