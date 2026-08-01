@@ -12,6 +12,7 @@ var inputLog = logging.NewUnifiedLogger("agentstream.input")
 type inputConfig struct {
 	socket    string
 	inputMode string
+	engine    mux.MuxEngine
 }
 
 // InputOption configures input behavior.
@@ -21,6 +22,21 @@ type InputOption func(*inputConfig)
 func WithSocket(socket string) InputOption {
 	return func(c *inputConfig) {
 		c.socket = socket
+	}
+}
+
+// WithEngine pins delivery to a caller-resolved mux engine, bypassing both
+// socket resolution and ambient auto-detection.
+//
+// Callers that already know which multiplexer hosts the target — chiefly
+// groved, which routes from a session's recorded mux — must use this. Ambient
+// detection reads the *calling* process's environment, and inside a daemon
+// that is the daemon's own: a tmux-hosted pane then gets addressed through
+// whatever tuimux daemon happens to answer, and the send fails with an opaque
+// "session not found" naming a tmux target that tuimux never had.
+func WithEngine(engine mux.MuxEngine) InputOption {
+	return func(c *inputConfig) {
+		c.engine = engine
 	}
 }
 
@@ -79,11 +95,15 @@ func SendInput(ctx context.Context, tmuxTarget, input string, opts ...InputOptio
 	return nil
 }
 
-// newMuxEngine creates a MuxEngine, using a specific socket if configured.
+// newMuxEngine creates a MuxEngine, using a caller-supplied engine or a
+// specific socket if configured.
 // A non-nil error always comes with a nil engine: forwarding the concrete
 // *TmuxEngine result straight out would wrap a nil pointer in a non-nil
 // interface, and any `engine != nil` guard downstream would then panic.
 func newMuxEngine(cfg *inputConfig) (mux.MuxEngine, error) {
+	if cfg.engine != nil {
+		return cfg.engine, nil
+	}
 	if cfg.socket != "" {
 		engine, err := mux.NewTmuxEngineWithSocket(cfg.socket)
 		if err != nil {
