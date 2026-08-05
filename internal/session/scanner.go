@@ -151,7 +151,10 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 		return nil, fmt.Errorf("reading sessions directory: %w", err)
 	}
 
-	logger.WithField("entry_count", len(entries)).Debug("Found entries in sessions directory")
+	// Per-entry logging here multiplies by registry size on every scan (tens
+	// of thousands of lines a day at steady state), so count outcomes and
+	// emit one aggregate line at the end.
+	noMetadata, legacyFormat := 0, 0
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -161,10 +164,7 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 		metadataPath := filepath.Join(sessionsDir, entry.Name(), "metadata.json")
 		data, err := os.ReadFile(metadataPath)
 		if err != nil {
-			logger.WithFields(map[string]interface{}{
-				"session_id":    entry.Name(),
-				"metadata_path": metadataPath,
-			}).Debug("Skipping session - no metadata file")
+			noMetadata++
 			continue // Skip sessions without metadata
 		}
 
@@ -181,20 +181,18 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 		// This is stored in ClaudeSessionID, while SessionID is the flow job ID.
 		if metadata.ClaudeSessionID != "" {
 			registryMap[metadata.ClaudeSessionID] = metadata
-			logger.WithFields(map[string]interface{}{
-				"claude_session_id": metadata.ClaudeSessionID,
-				"job_session_id":    metadata.SessionID,
-				"transcript_path":   metadata.TranscriptPath,
-				"plan_name":         metadata.PlanName,
-				"job_file_path":     metadata.JobFilePath,
-			}).Debug("Registered session from metadata")
 		} else {
 			// Backwards compatibility for older metadata files
 			registryMap[entry.Name()] = metadata
-			logger.WithField("session_id", entry.Name()).Debug("Registered session (legacy format)")
+			legacyFormat++
 		}
 	}
-	logger.WithField("total_sessions", len(registryMap)).Debug("Loaded sessions from registry")
+	logger.WithFields(map[string]interface{}{
+		"entry_count":    len(entries),
+		"total_sessions": len(registryMap),
+		"no_metadata":    noMetadata,
+		"legacy_format":  legacyFormat,
+	}).Debug("Loaded sessions from registry")
 	return registryMap, nil
 }
 
@@ -278,6 +276,11 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	processedRegistrySessions := make(map[string]bool)
 	registryJobSessionIDs := make(map[string]bool)
 
+	// Counted rather than logged per file: these branches run for every
+	// transcript on every scan and were the bulk of scan log volume. Totals
+	// land on the "Transcript scan complete" line.
+	duplicateRegistryFiles, registrySessions := 0, 0
+
 	for _, logPath := range matches {
 		parsed, cacheHit := s.parseTranscriptCached(logPath)
 		sessionID, cwd, startedAt, jobs, found := parsed.sessionID, parsed.cwd, parsed.startedAt, parsed.jobs, parsed.found
@@ -295,21 +298,14 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 			// Skip if we've already processed this registry session
 			// (prevents duplicates from agent sidechain files)
 			if processedRegistrySessions[sessionID] {
-				logger.WithFields(map[string]interface{}{
-					"session_id":      sessionID,
-					"transcript_file": filepath.Base(logPath),
-				}).Debug("Skipping duplicate registry session")
+				duplicateRegistryFiles++
 				continue
 			}
 			processedRegistrySessions[sessionID] = true
 			if metadata.SessionID != "" {
 				registryJobSessionIDs[metadata.SessionID] = true
 			}
-			logger.WithFields(map[string]interface{}{
-				"session_id":    sessionID,
-				"plan_name":     metadata.PlanName,
-				"job_file_path": metadata.JobFilePath,
-			}).Debug("Found session in registry, using metadata")
+			registrySessions++
 
 			// If this session is also in our archive map, remove it to prevent it from being added twice.
 			// The live registry is the most up-to-date source.
@@ -456,12 +452,14 @@ func (s *Scanner) Scan() ([]SessionInfo, error) {
 	}
 
 	logger.WithFields(map[string]interface{}{
-		"files":       len(matches),
-		"parsed":      parsedFiles,
-		"cached":      cachedFiles,
-		"recognized":  recognizedFiles,
-		"sessions":    len(sessions),
-		"duration_ms": time.Since(scanStarted).Milliseconds(),
+		"files":           len(matches),
+		"parsed":          parsedFiles,
+		"cached":          cachedFiles,
+		"recognized":      recognizedFiles,
+		"from_registry":   registrySessions,
+		"duplicate_files": duplicateRegistryFiles,
+		"sessions":        len(sessions),
+		"duration_ms":     time.Since(scanStarted).Milliseconds(),
 	}).Debug("Transcript scan complete")
 	return sessions, nil
 }
