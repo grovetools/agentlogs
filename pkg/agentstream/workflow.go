@@ -107,12 +107,16 @@ func discoverWorkflowFiles(workflowsDir string, seen map[string]bool, start func
 // tailTagged runs tailFile into a private channel and forwards entries to
 // out, tagging them with agentID when the normalizer didn't set one.
 func tailTagged(ctx context.Context, path, agentID string, normalizer transcript.Normalizer, out chan<- transcript.UnifiedEntry) {
-	inner := make(chan transcript.UnifiedEntry, 16)
+	inner := make(chan Event, 16)
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
-		for entry := range inner {
+		for event := range inner {
+			if event.Entry == nil {
+				continue
+			}
+			entry := *event.Entry
 			if entry.AgentID == "" {
 				entry.AgentID = agentID
 			}
@@ -124,7 +128,7 @@ func tailTagged(ctx context.Context, path, agentID string, normalizer transcript
 		}
 	}()
 
-	tailFile(ctx, path, normalizer, inner)
+	tailFile(ctx, path, normalizer, 0, inner)
 	close(inner)
 	<-done
 }
