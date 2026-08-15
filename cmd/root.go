@@ -23,6 +23,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newMetricsCmd())
 	rootCmd.AddCommand(newUsageCmd())
 	rootCmd.AddCommand(NewVersionCmd())
+	rootCmd.AddCommand(newSuperviseAgentCmd())
 
 	return rootCmd
 }

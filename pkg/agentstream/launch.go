@@ -5,191 +5,317 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/grovetools/core/pkg/paths"
 	"github.com/grovetools/core/pkg/process"
 )
 
-// deadPIDGrace bounds how long WaitForPID keeps polling after reading a pidfile
-// whose PID is already dead, hoping the launch's own shell overwrites it.
-//
-// This is defence in depth behind clearStalePIDFile: if a leftover file somehow
-// survives the launch (an unremovable runtime dir, or two launches of one job
-// racing), the window in which a corpse can be reported as the agent shrinks
-// from "forever" to this. In the 2026-08-01 incident the real shell rewrote the
-// file within the same second the wait started, so a few seconds is ample for
-// the truthful write to win.
-//
-// It deliberately does not reject dead PIDs outright. A Pi that fails to load an
-// extension exits about a second after spawn, and its real (now dead) PID is the
-// evidence handlePiStartupFailure uses to mark the job failed instead of leaving
-// it "running" forever; requiring liveness would discard that and turn a fast
-// crash into a 30s timeout. A dead PID is deprioritised, never discarded.
-//
-// The other candidate — ignoring a pidfile whose mtime predates the wait — was
-// rejected: the wrapper legitimately writes the file *before* WaitForPID is
-// entered (every provider sends the command, then does daemon RPCs, and only
-// then starts discovery), so "older than the wait" describes healthy launches
-// too. Sub-second mtime discrimination is not portable enough to fix that.
-//
-// A var, not a const, only so tests can collapse it; nothing mutates it at
-// runtime.
+const (
+	pidPollInterval = 25 * time.Millisecond
+	pidWaitTimeout  = 30 * time.Second
+	ackGracePeriod  = 250 * time.Millisecond
+)
+
+// deadPIDGrace gives a new launch time to replace a stale, dead PID while still
+// allowing a provider that exits immediately to be discovered and reported.
 var deadPIDGrace = 3 * time.Second
 
-// BuildAgentCommand wraps an agent command to capture its PID deterministically.
-// The returned command writes the shell PID to a pidfile before exec'ing the agent binary,
-// so the caller can simply watch for the file rather than traversing process trees.
+// SupervisorOptions describes one interactive provider invocation.
+// AgentCommand and ReporterCommand are opaque shell command strings. The
+// supervisor appends the provider's numeric exit code to ReporterCommand.
+type SupervisorOptions struct {
+	PIDFile         string
+	AgentCommand    string
+	ReporterCommand string
+}
+
+// BuildSupervisedAgentCommand builds the pane command used to enter the Go
+// supervisor. supervisorCommand is a trusted command prefix supplied by the
+// embedding executable (for example, "flow agent supervise").
 //
-// The command is wrapped in `sh -c '...'` to ensure POSIX $$ works regardless of the
-// user's login shell (fish uses $fish_pid instead of $$, for example).
-//
-// Building the command is also the launch's preparation step: it clears any
-// pidfile a previous launch of this job left behind (see clearStalePIDFile), so
-// the only file WaitForPID can possibly observe is the one this launch writes.
-//
-// Example: for "claude --model opus", returns:
-//
-//	sh -c 'mkdir -p /path/to && echo $$ > /path/to/grove-agent-<jobID>.pid && exec claude --model opus'
-func BuildAgentCommand(jobID, agentCmd string) string {
+// The returned command removes receipts from an older attempt before execing
+// the supervisor. Call PreparePIDFile immediately before dispatch as well, so
+// WaitForPID cannot observe a stale receipt while the pane command is queued.
+func BuildSupervisedAgentCommand(jobID, supervisorCommand, agentCommand, reporterCommand string) string {
 	pidFile := PidFilePath(jobID)
-	clearStalePIDFile(jobID)
-	// Escape single quotes in the agent command for embedding in sh -c '...'
-	escapedCmd := strings.ReplaceAll(agentCmd, "'", "'\"'\"'")
-	escapedDir := strings.ReplaceAll(filepath.Dir(pidFile), "'", "'\"'\"'")
-	escapedPidFile := strings.ReplaceAll(pidFile, "'", "'\"'\"'")
-	return fmt.Sprintf("sh -c 'mkdir -p %s && echo $$ > %s && exec %s'",
-		escapedDir,
-		escapedPidFile,
-		escapedCmd,
+	// Best-effort preparation closes the window before the pane command runs;
+	// the returned command repeats it to cover a receipt created while queued.
+	_ = PreparePIDFile(jobID)
+	return fmt.Sprintf(
+		"rm -f %s %s && exec %s --pid-file %s --agent-command %s --reporter-command %s",
+		shellSingleQuote(pidFile),
+		shellSingleQuote(pidAckPath(pidFile)),
+		supervisorCommand,
+		shellSingleQuote(pidFile),
+		shellSingleQuote(agentCommand),
+		shellSingleQuote(reporterCommand),
 	)
 }
 
-// clearStalePIDFile removes a previous launch's pidfile so WaitForPID cannot
-// observe a file that predates the launch it is waiting on.
-//
-// PidFilePath is deterministic per job ID, so every launch of a job reuses the
-// identical path, and the wrapper's truncating `echo $$ >` only lands once the
-// agent's shell actually runs. Observed 2026-08-01 on job steward-66dd4eb3: a
-// launch at 17:26 lost its discovery goroutine to process exit before
-// CleanupPIDFile could run, leaving the file holding pid 12072; that process
-// died. The relaunch at 18:30 spawned a healthy agent (pid 40179), but WaitForPID
-// read the leftover on its first 100ms tick and returned 12072, beating the new
-// shell's `echo $$` — "Discovered agent PID via pidfile pid=12072" at 18:30:36,
-// "Confirmed groveterm agent session pid=12072" at 18:30:42, while the file on
-// disk already read 40179.
-//
-// The damage outlives the wrong number: the daemon's session collector only
-// reaps a PID it has positively observed alive (`if !ls.seenAlive { continue }`),
-// and a PID that was already dead at confirmation can never flip that flag, so
-// the session becomes permanently unreapable and lingers idle after the real
-// agent exits — with the assistant supervisor reading that record as proof a
-// live session is present. For Pi providers a stale corpse is worse still: it
-// reads as `processExited` to handlePiStartupFailure, which can fail a job whose
-// agent is merely slow to write its first transcript.
-//
-// This lives at command-build time rather than in each provider because every
-// launch path — groveterm, claude, codex, pi, and the isolated executor — must
-// go through BuildAgentCommand to get a command that writes a pidfile at all. A
-// provider added later cannot forget it.
-//
-// Removal is best-effort: a runtime dir we cannot unlink in must not block a
-// launch (the agent matters more than the bookkeeping), and deadPIDGrace is the
-// second line of defence for exactly that case.
-func clearStalePIDFile(jobID string) {
-	_ = os.Remove(PidFilePath(jobID))
+// BuildAgentCommand retains the legacy unsupervised wrapper for callers which
+// have not yet adopted BuildSupervisedAgentCommand.
+func BuildAgentCommand(jobID, agentCmd string) string {
+	pidFile := PidFilePath(jobID)
+	// Legacy callers have no supervisor-side receipt cleanup, so command
+	// construction remains their launch preparation choke point.
+	_ = PreparePIDFile(jobID)
+	script := fmt.Sprintf("mkdir -p %s && echo $$ > %s && exec %s",
+		shellSingleQuote(filepath.Dir(pidFile)),
+		shellSingleQuote(pidFile),
+		agentCmd,
+	)
+	return "sh -c " + shellSingleQuote(script)
 }
 
-// WaitForPID watches for the pidfile and returns the agent's PID.
-// Blocks until a usable PID appears, ctx is cancelled, or timeout (30s) is reached.
+// RunSupervisor launches the provider with inherited stdio, records the
+// provider PID, forwards SIGTERM/SIGINT, waits for it, invokes the reporter,
+// and returns the provider's shell-compatible exit code.
 //
-// A PID that is already dead when read is held as a fallback rather than
-// returned straight away — see deadPIDGrace for why it is neither trusted
-// immediately nor rejected.
+// ReporterCommand is a command prefix: the decimal exit code is appended as
+// its final shell argument. Reporter failure is diagnosed on stderr but never
+// replaces the provider's exit code.
+func RunSupervisor(ctx context.Context, opts SupervisorOptions) int {
+	if opts.PIDFile == "" || opts.AgentCommand == "" || opts.ReporterCommand == "" {
+		fmt.Fprintln(os.Stderr, "agent supervisor: pid file, agent command, and reporter command are required")
+		return 2
+	}
+
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(signals)
+
+	provider := exec.Command("sh", "-c", "exec "+opts.AgentCommand)
+	provider.Stdin = os.Stdin
+	provider.Stdout = os.Stdout
+	provider.Stderr = os.Stderr
+	if err := provider.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "agent supervisor: start provider: %v\n", err)
+		runReporter(opts.ReporterCommand, 127)
+		return 127
+	}
+
+	pid := provider.Process.Pid
+	if err := writePIDReceipt(opts.PIDFile, pid); err != nil {
+		fmt.Fprintf(os.Stderr, "agent supervisor: write pid receipt: %v\n", err)
+		_ = provider.Process.Kill()
+		_ = provider.Wait()
+		runReporter(opts.ReporterCommand, 1)
+		return 1
+	}
+
+	done := make(chan struct{})
+	go func() {
+		select {
+		case sig := <-signals:
+			forwardSignal(provider.Process, sig)
+		case <-ctx.Done():
+			forwardSignal(provider.Process, syscall.SIGTERM)
+		case <-done:
+		}
+	}()
+
+	err := provider.Wait()
+	close(done)
+	rc := processExitCode(err)
+	runReporter(opts.ReporterCommand, rc)
+	cleanupAcknowledgedReceipt(opts.PIDFile, pid)
+	return rc
+}
+
+func runReporter(command string, rc int) {
+	// Reporting is part of supervision, not part of the provider's cancellable
+	// lifetime. A cancelled launch context must not suppress the exit report.
+	reporter := exec.Command("sh", "-c", "exec "+command+" "+strconv.Itoa(rc))
+	reporter.Stdin = os.Stdin
+	reporter.Stdout = os.Stdout
+	reporter.Stderr = os.Stderr
+	if err := reporter.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "agent supervisor: reporter failed: %v\n", err)
+	}
+}
+
+func processExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			return 128 + int(status.Signal())
+		}
+		if code := exitErr.ExitCode(); code >= 0 {
+			return code
+		}
+	}
+	return 1
+}
+
+func forwardSignal(process *os.Process, sig os.Signal) {
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		_ = process.Signal(sig)
+		return
+	}
+
+	childGroup, childErr := syscall.Getpgid(process.Pid)
+	selfGroup := syscall.Getpgrp()
+	switch {
+	case childErr == nil && childGroup != selfGroup:
+		_ = syscall.Kill(-childGroup, sysSig)
+	case selfGroup == os.Getpid():
+		// Interactive shells normally make the supervisor the foreground group
+		// leader. Ignore this forwarded signal in the supervisor itself, then
+		// deliver it to the whole group so provider subprocesses receive it.
+		signal.Ignore(sysSig)
+		_ = syscall.Kill(-selfGroup, sysSig)
+	default:
+		// Do not signal an inherited non-interactive process group (which may
+		// contain the caller or test harness).
+		_ = process.Signal(sysSig)
+	}
+}
+
+// PreparePIDFile removes receipts from a prior attempt. Call it immediately
+// before dispatching the supervisor command.
+func PreparePIDFile(jobID string) error {
+	return removePIDReceipts(PidFilePath(jobID))
+}
+
+// WaitForPID watches for the pidfile and returns the provider PID. Before it
+// returns, it writes an acknowledgement. The supervisor keeps the pidfile
+// through reporter execution and removes it only after observing that ack;
+// therefore instant provider exits cannot race PID discovery.
 func WaitForPID(ctx context.Context, jobID string) (int, error) {
 	pidFile := PidFilePath(jobID)
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(pidPollInterval)
 	defer ticker.Stop()
-	timeout := time.After(30 * time.Second)
+	timer := time.NewTimer(pidWaitTimeout)
+	defer timer.Stop()
 
-	// The most recent dead PID read out of the pidfile, and when it first
-	// appeared. Reset whenever a different PID shows up, so a rewrite gets its
-	// own grace rather than inheriting an expired one.
 	var deadPID int
 	var deadSince time.Time
+	acknowledge := func(pid int) (int, error) {
+		if err := writePIDReceipt(pidAckPath(pidFile), pid); err != nil {
+			return 0, fmt.Errorf("acknowledge pidfile %s: %w", pidFile, err)
+		}
+		return pid, nil
+	}
 
 	for {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		case <-timeout:
-			if deadPID > 0 {
-				return deadPID, nil
-			}
-			return 0, fmt.Errorf("timeout waiting for pidfile %s", pidFile)
-		case <-ticker.C:
-			data, err := os.ReadFile(pidFile)
-			if err != nil {
-				continue
-			}
-			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-			if err != nil || pid <= 0 {
-				continue
-			}
+		if pid, ok := readPID(pidFile); ok {
 			if process.IsProcessAlive(pid) {
-				return pid, nil
+				return acknowledge(pid)
 			}
 			if pid != deadPID {
 				deadPID, deadSince = pid, time.Now()
-				continue
+			} else if time.Since(deadSince) >= deadPIDGrace {
+				return acknowledge(deadPID)
 			}
-			if time.Since(deadSince) >= deadPIDGrace {
-				return deadPID, nil
+		}
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-timer.C:
+			if deadPID > 0 {
+				return acknowledge(deadPID)
 			}
+			return 0, fmt.Errorf("timeout waiting for pidfile %s", pidFile)
+		case <-ticker.C:
 		}
 	}
 }
 
-// CleanupPIDFile removes the pidfile for the given job, but only while it still
-// holds the PID the caller consumed.
-//
-// The compare guards a race a bare unlink cannot see. The path is deterministic
-// per job ID, and callers reach cleanup at the end of a discovery goroutine that
-// can run for tens of seconds (a 30s PID wait plus ten one-second transcript
-// retries), by which point a relaunch of the same job may already have written
-// its own PID here. Removing that file would strand the new launch's WaitForPID
-// on a path nothing will ever write again. A mismatch means the file is not ours,
-// so we leave it: BuildAgentCommand clears whatever is there at the next launch,
-// which is the one moment deleting is unambiguously safe. That is also why the
-// failure paths deliberately do not force a cleanup — a leaked pidfile can no
-// longer poison a later launch, and an eager unlink there would be the delete
-// most likely to hit a concurrent launch's file.
-//
-// A missing file is not an error; it is the expected state after a launch whose
-// agent never ran.
-func CleanupPIDFile(jobID string, pid int) error {
-	path := PidFilePath(jobID)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+// CleanupPIDFile removes the pidfile and acknowledgement. If expectedPID is
+// supplied, cleanup is compare-and-delete so an older discovery goroutine
+// cannot remove a relaunch's receipt. The variadic form retains compatibility
+// with supervised callers, whose acknowledgement already identifies the PID.
+func CleanupPIDFile(jobID string, expectedPID ...int) error {
+	pidFile := PidFilePath(jobID)
+	if len(expectedPID) > 0 {
+		pid, ok := readPID(pidFile)
+		if !ok {
 			return nil
 		}
-		return err
+		if pid != expectedPID[0] {
+			return nil
+		}
 	}
-	current, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || current != pid {
-		return nil
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
+	return removePIDReceipts(pidFile)
 }
 
 // PidFilePath returns the deterministic path for a job's pidfile.
 func PidFilePath(jobID string) string {
 	return filepath.Join(paths.RuntimeDir(), fmt.Sprintf("grove-agent-%s.pid", jobID))
+}
+
+func readPID(path string) (int, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	return pid, err == nil && pid > 0
+}
+
+func writePIDReceipt(path string, pid int) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".pid-receipt-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := fmt.Fprintf(tmp, "%d\n", pid); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
+
+func cleanupAcknowledgedReceipt(pidFile string, pid int) {
+	deadline := time.Now().Add(ackGracePeriod)
+	for {
+		if ackPID, ok := readPID(pidAckPath(pidFile)); ok && ackPID == pid {
+			_ = removePIDReceipts(pidFile)
+			return
+		}
+		if time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func removePIDReceipts(pidFile string) error {
+	var firstErr error
+	for _, path := range []string{pidFile, pidAckPath(pidFile)} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func pidAckPath(pidFile string) string {
+	return pidFile + ".ack"
+}
+
+func shellSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
