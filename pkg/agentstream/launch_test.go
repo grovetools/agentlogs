@@ -60,6 +60,32 @@ func TestRunSupervisorProviderPIDAndExitCode(t *testing.T) {
 	assertReporter(t, files, 37, 1, true)
 }
 
+func TestRunSupervisorCleansUpProviderToolChildren(t *testing.T) {
+	files := newLaunchFiles(t)
+	childPIDFile := filepath.Join(t.TempDir(), "tool-child.pid")
+	agentScript := fmt.Sprintf("sleep 300 & echo $! > %s; exit 37", shellSingleQuote(childPIDFile))
+	cmd := supervisorProcess(t, files, "sh -c "+shellSingleQuote(agentScript))
+	// This models the pane launch shape: exec replaces the pane shell, leaving
+	// the supervisor as foreground process-group leader.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	childData, err := waitForFile(childPIDFile, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childPID, err := strconv.Atoi(strings.TrimSpace(string(childData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitCommand(cmd, 5*time.Second); exitCode(err) != 37 {
+		t.Fatalf("supervisor exit = %d, want 37 (%v)", exitCode(err), err)
+	}
+	assertProcessGone(t, childPID)
+	assertReporter(t, files, 37, 1, true)
+}
+
 func TestRunSupervisorTERMProvider(t *testing.T) {
 	files := newLaunchFiles(t)
 	cmd := supervisorProcess(t, files, providerCommand(t, files, "block", 0))

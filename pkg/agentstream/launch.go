@@ -102,6 +102,10 @@ func RunSupervisor(ctx context.Context, opts SupervisorOptions) int {
 	}
 
 	pid := provider.Process.Pid
+	// Capture the process group while the provider is alive. Once Wait returns,
+	// Getpgid(provider.Pid) can no longer recover it, but surviving tool children
+	// remain in that group and must not be orphaned.
+	providerGroup, _ := syscall.Getpgid(pid)
 	if err := writePIDReceipt(opts.PIDFile, pid); err != nil {
 		fmt.Fprintf(os.Stderr, "agent supervisor: write pid receipt: %v\n", err)
 		_ = provider.Process.Kill()
@@ -124,9 +128,32 @@ func RunSupervisor(ctx context.Context, opts SupervisorOptions) int {
 	err := provider.Wait()
 	close(done)
 	rc := processExitCode(err)
+	terminateRemainingProviderGroup(providerGroup)
 	runReporter(opts.ReporterCommand, rc)
 	cleanupAcknowledgedReceipt(opts.PIDFile, pid)
 	return rc
+}
+
+// terminateRemainingProviderGroup cleans up tool subprocesses left behind when
+// the provider exits or is killed. In an interactive pane the supervisor is
+// normally the foreground process-group leader and the provider inherits that
+// group; temporarily ignoring TERM lets the supervisor signal the rest of its
+// own group without terminating before it can report the provider outcome.
+// In non-interactive embedding, an inherited group may also contain the caller,
+// so that unsafe shape is deliberately left alone.
+func terminateRemainingProviderGroup(providerGroup int) {
+	if providerGroup <= 0 {
+		return
+	}
+	selfGroup := syscall.Getpgrp()
+	switch {
+	case providerGroup != selfGroup:
+		_ = syscall.Kill(-providerGroup, syscall.SIGTERM)
+	case selfGroup == os.Getpid():
+		signal.Ignore(syscall.SIGTERM)
+		_ = syscall.Kill(-selfGroup, syscall.SIGTERM)
+		signal.Reset(syscall.SIGTERM)
+	}
 }
 
 func runReporter(command string, rc int) {
