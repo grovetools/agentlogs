@@ -9,6 +9,7 @@ import (
 // RegisterOptions configures session registration with the daemon.
 type RegisterOptions struct {
 	JobID       string
+	AttemptID   string
 	Provider    string
 	WorkDir     string
 	Title       string
@@ -30,6 +31,7 @@ func RegisterAgent(ctx context.Context, opts RegisterOptions) (*Confirmer, error
 	client := daemon.NewWithAutoStart()
 	err := client.RegisterSessionIntent(ctx, daemon.SessionIntent{
 		JobID:       opts.JobID,
+		AttemptID:   opts.AttemptID,
 		Provider:    opts.Provider,
 		JobFilePath: opts.JobFilePath,
 		PlanName:    opts.PlanName,
@@ -47,6 +49,7 @@ func RegisterAgent(ctx context.Context, opts RegisterOptions) (*Confirmer, error
 func (c *Confirmer) Confirm(ctx context.Context, pid int, nativeID, transcriptPath string) error {
 	return c.client.ConfirmSession(ctx, daemon.SessionConfirmation{
 		JobID:          c.opts.JobID,
+		AttemptID:      c.opts.AttemptID,
 		NativeID:       nativeID,
 		PID:            pid,
 		TranscriptPath: transcriptPath,

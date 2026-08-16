@@ -177,14 +177,18 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 			continue // Skip invalid metadata
 		}
 
-		// The key is the native agent session ID (e.g., Claude's UUID).
-		// This is stored in ClaudeSessionID, while SessionID is the flow job ID.
-		if metadata.ClaudeSessionID != "" {
-			registryMap[metadata.ClaudeSessionID] = metadata
-		} else {
-			// Backwards compatibility for older metadata files
-			registryMap[entry.Name()] = metadata
+		// Registry directories for current writers are keyed by AttemptID, while
+		// transcript discovery still joins on the provider's native alias. Keep
+		// that native map, preferring an attempt-aware record when a resumed
+		// provider reuses its native ID and legacy metadata is still awaiting GC.
+		key := metadata.ClaudeSessionID
+		if key == "" {
+			// Backwards compatibility for older metadata files.
+			key = entry.Name()
 			legacyFormat++
+		}
+		if previous, exists := registryMap[key]; !exists || preferRegistryAttempt(metadata, previous) {
+			registryMap[key] = metadata
 		}
 	}
 	logger.WithFields(map[string]interface{}{
@@ -194,6 +198,24 @@ func (s *Scanner) loadSessionRegistry() (map[string]sessions.SessionMetadata, er
 		"legacy_format":  legacyFormat,
 	}).Debug("Loaded sessions from registry")
 	return registryMap, nil
+}
+
+// preferRegistryAttempt resolves the only expected collision in the native-ID
+// index: a resumed provider may reuse its alias while each Flow dispatch has a
+// distinct registry attempt. New-format metadata beats legacy metadata; within
+// one format the later StartedAt wins, with UUIDv7 lexical order as a stable
+// tie-breaker for records written at the same timestamp.
+func preferRegistryAttempt(candidate, current sessions.SessionMetadata) bool {
+	if candidate.AttemptID != "" && current.AttemptID == "" {
+		return true
+	}
+	if candidate.AttemptID == "" && current.AttemptID != "" {
+		return false
+	}
+	if !candidate.StartedAt.Equal(current.StartedAt) {
+		return candidate.StartedAt.After(current.StartedAt)
+	}
+	return candidate.AttemptID > current.AttemptID
 }
 
 // Scan searches for and parses all Claude and Codex session logs.

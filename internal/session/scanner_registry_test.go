@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,58 @@ import (
 
 	"github.com/grovetools/core/pkg/sessions"
 )
+
+func TestLoadSessionRegistryMapsAttemptKeyedRecordByNativeAlias(t *testing.T) {
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	registryRoot := filepath.Join(stateHome, "grove", "hooks", "sessions")
+
+	write := func(dir string, metadata sessions.SessionMetadata) {
+		t.Helper()
+		path := filepath.Join(registryRoot, dir, "metadata.json")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal(metadata)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("019d-attempt", sessions.SessionMetadata{
+		AttemptID:       "019d-attempt",
+		SessionID:       "reused-job-id",
+		JobID:           "reused-job-id",
+		ClaudeSessionID: "native-current",
+		StartedAt:       time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC),
+	})
+	// A stale legacy record for a resumed native alias must not replace the
+	// exact current attempt merely because its directory sorts later.
+	write("zz-native-current", sessions.SessionMetadata{
+		SessionID:       "reused-job-id",
+		ClaudeSessionID: "native-current",
+		StartedAt:       time.Date(2026, 8, 15, 13, 0, 0, 0, time.UTC),
+	})
+	// Legacy native-keyed records remain readable during GC migration.
+	write("native-legacy", sessions.SessionMetadata{
+		SessionID:       "legacy-job",
+		ClaudeSessionID: "native-legacy",
+	})
+
+	got, err := NewScannerWithoutDaemon().loadSessionRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current, ok := got["native-current"]; !ok || current.AttemptID != "019d-attempt" || current.JobID != "reused-job-id" {
+		t.Fatalf("attempt-keyed record missing by native alias: %+v", current)
+	}
+	if legacy, ok := got["native-legacy"]; !ok || legacy.SessionID != "legacy-job" {
+		t.Fatalf("legacy native-keyed record missing: %+v", legacy)
+	}
+}
 
 func TestSessionFromRegistryMetadataUsesExplicitTranscriptPath(t *testing.T) {
 	transcriptPath := filepath.Join(t.TempDir(), "sessions", "native-pi-session.jsonl")
